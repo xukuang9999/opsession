@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>工作的叠加态 | OpenClaw Agent Town Office</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene"></canvas>
+      <button
+        id="ui-toggle"
+        class="ui-toggle-button"
+        type="button"
+        aria-label="切换界面显示"
+        aria-pressed="false"
+        data-show-label="显示 UI"
+        data-hide-label="隐藏 UI"
+      >
+        显示 UI
+      </button>
+
+      <aside class="hud hud-left">
+        <div class="clock-card glass">
+          <div id="dashboard-time" class="clock-time">00:00:00</div>
+          <div id="dashboard-date" class="clock-date">----/--/--</div>
+          <div class="clock-meta">Local office session</div>
+          <div id="dashboard-last-event" class="clock-meta">最近动作：等待指令</div>
+        </div>
+
+        <div class="brand-card glass">
+          <div class="eyebrow">Agent Town Style Demo</div>
+          <h1>工作的叠加态</h1>
+          <p class="subtitle">OpenClaw 可漫游办公世界</p>
+          <p class="body">
+            作为办公室里的老板在工位间走动，面对面给部门 Agent 派单，观察它们在同一空间里协作执行。
+          </p>
+        </div>
+
+        <div class="control-card glass">
+          <div class="section-title">In-World Controls</div>
+          <p>`WASD` / 方向键移动；拖拽调整朝向，滚轮缩放镜头。</p>
+          <p>走到工位旁按 `E` 面对面派单；靠近记忆节点按 `F` 记录洞察。</p>
+          <p>也可直接点击右侧座位清单或小地图，快速切换到指定部门。</p>
+        </div>
+
+        <div class="speaker-card glass">
+          <div class="section-title">核心论点</div>
+          <ul id="thesis-list"></ul>
+        </div>
+      </aside>
+
+      <aside class="hud hud-right">
+        <div class="map-card glass">
+          <div class="map-header">
+            <div class="map-header-main">
+              <div class="section-title">Office Map</div>
+              <span id="map-floor-indicator" class="floor-pill">L1 Agent Office</span>
+            </div>
+          </div>
+          <canvas id="minimap" width="300" height="220" aria-label="部门地图"></canvas>
+          <p class="map-hint">点击工位可快速跳转，白色箭头表示你当前所在位置和面向。</p>
+        </div>
+
+        <div class="metric-card glass">
+          <div class="section-title">演示进度</div>
+          <div class="metric-grid">
+            <div>
+              <span class="metric-label">已完成场景</span>
+              <strong id="completed-count">0</strong>
+            </div>
+            <div>
+              <span class="metric-label">执行力分数</span>
+              <strong id="impact-score">0</strong>
+            </div>
+            <div>
+              <span class="metric-label">当前区域</span>
+              <strong id="current-zone">主走廊</strong>
+            </div>
+            <div>
+              <span class="metric-label">当前阶段</span>
+              <strong id="execution-stage">辅助 → 执行</strong>
+            </div>
+            <div>
+              <span class="metric-label">洞察数</span>
+              <strong id="insight-count">0</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="route-card glass">
+          <div class="section-title">场景导航</div>
+          <div id="department-list" class="department-list"></div>
+        </div>
+
+        <div class="sources-card glass">
+          <div class="section-title">参考来源</div>
+          <div id="source-list" class="source-list"></div>
+        </div>
+      </aside>
+
+      <div id="prompt" class="prompt glass hidden"></div>
+      <div id="toast" class="toast glass hidden"></div>
+
+      <div id="mobile-controls" class="mobile-controls glass">
+        <button data-control="forward">▲</button>
+        <div class="mobile-row">
+          <button data-control="left">◀</button>
+          <button data-control="backward">▼</button>
+          <button data-control="right">▶</button>
+        </div>
+        <div class="mobile-row">
+          <button data-control="turn-left">↺</button>
+          <button data-control="turn-right">↻</button>
+        </div>
+      </div>
+
+      <section id="modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-panel glass">
+          <button id="close-modal" class="close-button" aria-label="关闭">×</button>
+          <div id="modal-content"></div>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>
