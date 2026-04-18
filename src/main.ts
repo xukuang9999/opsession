@@ -160,15 +160,46 @@ type DataCatalog = {
   uniqueSources: SourceItem[];
 };
 
+type PresenterContactItem = {
+  id: string;
+  label: Record<UiLanguage, string>;
+  value: string;
+  href?: string;
+  placeholder?: boolean;
+};
+
 const UI_TEXT = {
   "zh-CN": {
-    documentTitle: "小龙虾在商业上的叠加态 | OpenClaw Agent Office",
+    documentTitle: "AI圈顶流小龙虾 | OpenClaw Agent Office",
     start: {
-      badge: "像素开场",
-      title: "小龙虾在商业上的叠加态",
-      subtitle: "4月26日活动",
-      copy: "已切换到中文界面。点击开始，进入像素风商业场景。",
-      button: "开始进入",
+      badge: "海报像素重建",
+      kicker: "AI 同事灵魂拷问",
+      titleTop: "AI圈顶流",
+      titleMiddle: "OPEN CLAW",
+      titleBottom: "小龙虾",
+      subtitle: "2026 4月26日 · Monash Velos Accelerator",
+      copy: "“OpenClaw”（又称“养龙虾”）是2026年初爆火的开源 AI 智能体，因其图标为红色龙虾得名。",
+      mascotCopy: "像素龙虾导览员已就位，活动信息按海报内容重建。",
+      whenLabel: "时间",
+      whenValue: "2026 4月26日\n14:00 - 17:00",
+      whereLabel: "地点",
+      whereValue: "Monash Velos Accelerator\n770 Blackburn Road, Clayton VIC 3168",
+      topicsLabel: "分享主题",
+      topicOne: "AI Agent 如何走向真正可用？",
+      topicTwo: "OpenClaw与工作的叠加态",
+      topicThree: "未来类OpenClaw工具在企业发展趋势",
+      agendaLabel: "现场环节",
+      agendaOne: "个人分享",
+      agendaTwo: "Q&A环节",
+      agendaThree: "自由讨论",
+      agendaFour: "Networking&聚餐",
+      speakersLabel: "分享嘉宾",
+      speakerJeremy: "Jeremy Zhang (Shiquan Zhang)",
+      speakerMichael: "Michael (Kuang Xu)",
+      speakerJordan: "Jordan (Tiancheng Zhang)",
+      hostsLabel: "主办方",
+      hostsValue: "AIDG · Boson Ventures",
+      button: "进入像素会场",
       languageLabel: "切换界面语言",
       languageZh: "中文",
       languageEn: "English",
@@ -185,10 +216,10 @@ const UI_TEXT = {
       locale: "zh-CN",
     },
     brand: {
-      eyebrow: "像素商业演示",
-      title: "小龙虾在商业上的叠加态",
-      subtitle: "4月26日活动",
-      body: "作为办公室里的主角在工位间穿梭，追逐小龙虾导览员，把各部门商业场景连成一条可漫游的执行路线。",
+      eyebrow: "海报像素入口",
+      title: "AI圈顶流 OpenClaw 小龙虾",
+      subtitle: "2026 4月26日 · Monash Velos Accelerator",
+      body: "从海报文案重建的像素活动入口；进入办公室后，可继续漫游 OpenClaw 在不同部门的落地场景。",
     },
     controls: {
       title: "场景操作",
@@ -242,18 +273,50 @@ const UI_TEXT = {
       zoomOut: "缩小",
       zoomIn: "放大",
     },
+    thanks: {
+      badge: "感谢参与",
+      title: "感谢参与本次体验",
+      subtitle: "欢迎继续交流 OpenClaw",
+      copy: "你已从办公室左侧出口离开本次导览。感谢参与，欢迎会后继续联系我交流 OpenClaw 在真实业务中的落地方式。",
+      contactTitle: "联系方式",
+      restart: "返回办公室",
+    },
     common: {
       close: "关闭",
     },
   },
   en: {
-    documentTitle: "Lobster Superposition in Business | OpenClaw Agent Office",
+    documentTitle: "AI Top Trend: OpenClaw Lobster | OpenClaw Agent Office",
     start: {
-      badge: "Pixel Opening",
-      title: "Lobster Superposition in Business",
-      subtitle: "April 26 Event",
-      copy: "English UI is selected. Press Start to enter the pixel-art business scene.",
-      button: "START",
+      badge: "POSTER REBUILD",
+      kicker: "AI Teammate Reality Check",
+      titleTop: "AI TOP TREND",
+      titleMiddle: "OPEN CLAW",
+      titleBottom: "LOBSTER",
+      subtitle: "Apr 26, 2026 · Monash Velos Accelerator",
+      copy:
+        '"OpenClaw", nicknamed the "lobster", became a breakout open-source AI agent in early 2026 because of its red lobster icon.',
+      mascotCopy: "The pixel lobster guide is live, with event details rebuilt from the poster.",
+      whenLabel: "When",
+      whenValue: "April 26, 2026\n14:00 - 17:00",
+      whereLabel: "Where",
+      whereValue: "Monash Velos Accelerator\n770 Blackburn Road, Clayton VIC 3168",
+      topicsLabel: "Topics",
+      topicOne: "How can AI agents become truly usable?",
+      topicTwo: "OpenClaw and the superposition of work",
+      topicThree: "Where OpenClaw-like tools are heading in enterprise growth",
+      agendaLabel: "Agenda",
+      agendaOne: "Personal sharing",
+      agendaTwo: "Q&A session",
+      agendaThree: "Open discussion",
+      agendaFour: "Networking & dinner",
+      speakersLabel: "Speakers",
+      speakerJeremy: "Jeremy Zhang (Shiquan Zhang)",
+      speakerMichael: "Michael (Kuang Xu)",
+      speakerJordan: "Jordan (Tiancheng Zhang)",
+      hostsLabel: "Hosted by",
+      hostsValue: "AIDG · Boson Ventures",
+      button: "ENTER PIXEL VENUE",
       languageLabel: "Switch UI Language",
       languageZh: "中文",
       languageEn: "English",
@@ -270,10 +333,10 @@ const UI_TEXT = {
       locale: "en-US",
     },
     brand: {
-      eyebrow: "Pixel Business Demo",
-      title: "Lobster Superposition in Business",
-      subtitle: "April 26 Event",
-      body: "Roam the office as the main character, chase the lobster guide, and connect each department's commercial scenario into one explorable execution route.",
+      eyebrow: "Poster Rebuilt in Pixels",
+      title: "AI Top Trend: OpenClaw Lobster",
+      subtitle: "Apr 26, 2026 · Monash Velos Accelerator",
+      body: "This pixel-art entry scene is rebuilt from the event poster before you roam through OpenClaw use cases across each department.",
     },
     controls: {
       title: "In-World Controls",
@@ -327,6 +390,14 @@ const UI_TEXT = {
       zoomOut: "Zoom Out",
       zoomIn: "Zoom In",
     },
+    thanks: {
+      badge: "Thank You",
+      title: "Thanks For Joining",
+      subtitle: "Let's Keep Talking About OpenClaw",
+      copy: "You have left the walkthrough through the office exit on the left. Thanks for joining, and feel free to reach out after the session to continue the conversation.",
+      contactTitle: "Contact",
+      restart: "Return to Office",
+    },
     common: {
       close: "Close",
     },
@@ -345,6 +416,35 @@ const dataCatalogByLanguage: Record<UiLanguage, DataCatalog> = {
     uniqueSources: englishUniqueSources,
   },
 };
+
+// Replace the placeholder contact values below before the final presentation if needed.
+const PRESENTER_CONTACT = {
+  name: "Michael Xu",
+  title: {
+    "zh-CN": "OpenClaw 演示联系人",
+    en: "OpenClaw Demo Contact",
+  },
+  items: [
+    {
+      id: "email",
+      label: {
+        "zh-CN": "邮箱",
+        en: "Email",
+      },
+      value: "your-email@example.com",
+      placeholder: true,
+    },
+    {
+      id: "wechat",
+      label: {
+        "zh-CN": "微信",
+        en: "WeChat",
+      },
+      value: "your_wechat_id",
+      placeholder: true,
+    },
+  ] satisfies PresenterContactItem[],
+} as const;
 
 let currentUiLanguage: UiLanguage = "zh-CN";
 let baseDepartments = dataCatalogByLanguage["zh-CN"].departments;
@@ -705,7 +805,11 @@ function scaleClawLibraryPolygon(points: Array<[number, number]>): Polygon {
 const canvas = requireElement<HTMLCanvasElement>("#scene");
 const startScreen = requireElement<HTMLElement>("#start-screen");
 const startBadge = requireElement<HTMLElement>("#start-badge");
+const startKicker = requireElement<HTMLElement>("#start-kicker");
 const startTitle = requireElement<HTMLElement>("#start-title");
+const startTitleTop = requireElement<HTMLElement>("#start-title-top");
+const startTitleMiddle = requireElement<HTMLElement>("#start-title-middle");
+const startTitleBottom = requireElement<HTMLElement>("#start-title-bottom");
 const startSubtitle = requireElement<HTMLElement>("#start-subtitle");
 const startCopy = requireElement<HTMLElement>("#start-copy");
 const startButton = requireElement<HTMLButtonElement>("#start-button");
@@ -713,6 +817,7 @@ const startLanguagePanel = requireElement<HTMLDivElement>("#start-language-panel
 const startLanguageLabel = requireElement<HTMLElement>("#start-language-label");
 const startLanguageZhButton = requireElement<HTMLButtonElement>("#start-language-zh");
 const startLanguageEnButton = requireElement<HTMLButtonElement>("#start-language-en");
+const startLobster = requireElement<HTMLDivElement>("#start-lobster");
 const thesisList = requireElement<HTMLUListElement>("#thesis-list");
 const departmentList = requireElement<HTMLDivElement>("#department-list");
 const sourceList = requireElement<HTMLDivElement>("#source-list");
@@ -820,6 +925,7 @@ preparePlayerSpriteSheet(heroCapybaraSheetUrl);
 prepareLobsterSpriteSheet(lobsterGuideSheetUrl);
 prepareSceneLayer("floorImage", clawLibrarySceneFloorUrl);
 prepareSceneLayer("objectsImage", clawLibrarySceneObjectsUrl);
+startLobster.style.backgroundImage = `url(${lobsterGuideSheetUrl})`;
 
 function getLocalizedString(path: string): string {
   let current: unknown = UI_TEXT[currentUiLanguage];
@@ -866,6 +972,21 @@ function isEnglishUi(): boolean {
 
 function pickUiText<T>(zh: T, en: T): T {
   return isEnglishUi() ? en : zh;
+}
+
+function setStartTitleLines(top: string, middle: string, bottom: string): void {
+  startTitleTop.textContent = top;
+  startTitleMiddle.textContent = middle;
+  startTitleBottom.textContent = bottom;
+  startTitle.setAttribute("aria-label", [top, middle, bottom].filter(Boolean).join(" "));
+}
+
+function syncStartTitleAriaLabel(): void {
+  setStartTitleLines(
+    startTitleTop.textContent ?? "",
+    startTitleMiddle.textContent ?? "",
+    startTitleBottom.textContent ?? ""
+  );
 }
 
 const RUNTIME_TEXT_REPLACEMENTS = [
@@ -6424,6 +6545,8 @@ function applyUiLanguage(): void {
     }
   });
 
+  syncStartTitleAriaLabel();
+
   if (
     completedScenarios.size === 0 &&
     collectedInsights.size === 0 &&
@@ -8024,14 +8147,20 @@ function syncTitleScreenUi(): void {
 
   if (isLanguagePhase) {
     startBadge.textContent = "LANGUAGE SELECT";
-    startTitle.textContent = "选择语言 / Choose Language";
+    startKicker.textContent = "界面语言 / UI Language";
+    setStartTitleLines("选择语言", "CHOOSE UI", "LANGUAGE");
     startSubtitle.textContent = "中文 / English";
     startCopy.textContent =
       "先选择界面语言，再进入开始画面。下一页仍可继续切换。 / Choose the UI language first, then continue to the start screen. You can still switch it on the next page.";
     startLanguageLabel.textContent = "界面语言 / UI Language";
   } else {
     startBadge.textContent = getLocalizedString("start.badge");
-    startTitle.textContent = getLocalizedString("start.title");
+    startKicker.textContent = getLocalizedString("start.kicker");
+    setStartTitleLines(
+      getLocalizedString("start.titleTop"),
+      getLocalizedString("start.titleMiddle"),
+      getLocalizedString("start.titleBottom")
+    );
     startSubtitle.textContent = getLocalizedString("start.subtitle");
     startCopy.textContent = getLocalizedString("start.copy");
     startButton.textContent = getLocalizedString("start.button");
