@@ -7394,12 +7394,14 @@ function openThankYouScreen(): void {
   closeModal();
   thankYouScreenState.active = true;
   syncThankYouScreenUi();
+  thankYouRestartButton.focus();
   setLastEvent(pickUiText("从左侧出口离开办公室", "Left the office through the west exit"));
 }
 
 function closeThankYouScreen(): void {
   thankYouScreenState.active = false;
   syncThankYouScreenUi();
+  thankYouRestartButton.blur();
   setLastEvent(pickUiText("返回办公室继续漫游", "Returned to the office walkthrough"));
 }
 
