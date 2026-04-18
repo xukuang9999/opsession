@@ -281,8 +281,8 @@ function validateCandidate(layoutConfig) {
     )
   );
 
-  if (minGap < 8) {
-    errors.push(`minimum neighbor gap too small: ${minGap}`);
+  if (minGap !== 0) {
+    errors.push(`neighbor departments should share a wall gap: ${minGap}`);
   }
 
   const areasById = Object.fromEntries(departments.map((layout) => [layout.id, layout.width * layout.height]));
@@ -341,8 +341,8 @@ function buildCandidate(baseConfig, rng) {
   };
 
   const params = {
-    topGap: Math.round(randomBetween(rng, 10, 16)),
-    bottomGap: Math.round(randomBetween(rng, 10, 16)),
+    topGap: 0,
+    bottomGap: 0,
     topBaseHeight: randomBetween(rng, 96, 104),
     bottomBaseHeight: randomBetween(rng, 96, 106),
     topDepthScale: randomBetween(rng, 4.6, 7.1),

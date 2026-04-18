@@ -58,6 +58,8 @@ type IdentifiedRoomLayout = RoomLayout & {
   id: string;
 };
 
+type RoomFrameMaskMap = Map<string, Rect[]>;
+
 type FacingDirection = "up" | "down" | "left" | "right";
 type PlayerSpriteFacing = FacingDirection | "up-left" | "up-right" | "down-left" | "down-right";
 
@@ -569,6 +571,7 @@ const INSIGHT_DISTANCE = 8;
 const PODIUM_INTERACTION_DISTANCE = 12;
 const PROMPT_TARGET_ARROW_DISTANCE = 20;
 const PLAYER_RADIUS = 1.4;
+const ROOM_FRAME_BORDER_THICKNESS = 2;
 const PLAYER_SPEED = 90 * 1.3;
 const NPC_BASE_SPEED = 8;
 const NPC_MEETING_SUMMON_SPEED_MULTIPLIER = 3;
@@ -2003,9 +2006,87 @@ function createConcourseRects(items: Array<{ roomRect: Rect; walkwayRect: Rect; 
     );
 }
 
+function createDepartmentSharedWallState(items: SceneDepartment[]): {
+  frameMasksByDepartmentId: RoomFrameMaskMap;
+  obstacleRects: Rect[];
+} {
+  const frameMasksByDepartmentId: RoomFrameMaskMap = new Map(items.map((department) => [department.id, []]));
+  const obstacleRects: Rect[] = [];
+
+  for (let index = 0; index < items.length; index += 1) {
+    for (let otherIndex = index + 1; otherIndex < items.length; otherIndex += 1) {
+      const first = items[index];
+      const second = items[otherIndex];
+
+      const verticalOverlapTop = Math.max(first.roomRect.top, second.roomRect.top);
+      const verticalOverlapBottom = Math.min(
+        first.roomRect.top + first.roomRect.height,
+        second.roomRect.top + second.roomRect.height
+      );
+      const verticalOverlap = verticalOverlapBottom - verticalOverlapTop;
+
+      if (verticalOverlap > 0) {
+        const [leftDepartment, rightDepartment] =
+          first.roomRect.left <= second.roomRect.left ? [first, second] : [second, first];
+        if (leftDepartment.roomRect.left + leftDepartment.roomRect.width === rightDepartment.roomRect.left) {
+          frameMasksByDepartmentId.get(rightDepartment.id)?.push({
+            left: rightDepartment.roomRect.left,
+            top: verticalOverlapTop,
+            width: ROOM_FRAME_BORDER_THICKNESS,
+            height: verticalOverlap,
+          });
+          obstacleRects.push({
+            left: leftDepartment.roomRect.left + leftDepartment.roomRect.width - ROOM_FRAME_BORDER_THICKNESS,
+            top: verticalOverlapTop,
+            width: ROOM_FRAME_BORDER_THICKNESS,
+            height: verticalOverlap,
+          });
+          continue;
+        }
+      }
+
+      const horizontalOverlapLeft = Math.max(first.roomRect.left, second.roomRect.left);
+      const horizontalOverlapRight = Math.min(
+        first.roomRect.left + first.roomRect.width,
+        second.roomRect.left + second.roomRect.width
+      );
+      const horizontalOverlap = horizontalOverlapRight - horizontalOverlapLeft;
+
+      if (horizontalOverlap <= 0) {
+        continue;
+      }
+
+      const [topDepartment, bottomDepartment] =
+        first.roomRect.top <= second.roomRect.top ? [first, second] : [second, first];
+      if (topDepartment.roomRect.top + topDepartment.roomRect.height !== bottomDepartment.roomRect.top) {
+        continue;
+      }
+
+      frameMasksByDepartmentId.get(bottomDepartment.id)?.push({
+        left: horizontalOverlapLeft,
+        top: bottomDepartment.roomRect.top,
+        width: horizontalOverlap,
+        height: ROOM_FRAME_BORDER_THICKNESS,
+      });
+      obstacleRects.push({
+        left: horizontalOverlapLeft,
+        top: topDepartment.roomRect.top + topDepartment.roomRect.height - ROOM_FRAME_BORDER_THICKNESS,
+        width: horizontalOverlap,
+        height: ROOM_FRAME_BORDER_THICKNESS,
+      });
+    }
+  }
+
+  return {
+    frameMasksByDepartmentId,
+    obstacleRects,
+  };
+}
+
 const corridorCenterX = Math.round(corridorRect.left + corridorRect.width / 2);
 const corridorCenterY = Math.round(corridorRect.top + corridorRect.height / 2);
 const departmentConcourseRects = createConcourseRects([...departments, ...sharedZones]);
+const departmentSharedWallState = createDepartmentSharedWallState(departments);
 const resourceHubRect: Rect = {
   left: corridorRect.left + 124,
   top: corridorCenterY - 38,
@@ -2252,6 +2333,7 @@ const walkableRects = [
 ];
 
 const obstacleRects = [
+  ...departmentSharedWallState.obstacleRects,
   ...departments.map((department) => department.deskRect),
   ...officeProps.map((item) => getOfficePropCollisionRect(item)),
 ];
@@ -8038,14 +8120,15 @@ function drawRoomFrame(
   border: string,
   shadow = "#040610",
   shadowOffset = 3,
-  approachSide: RoomApproachSide
+  approachSide: RoomApproachSide,
+  frameMasks: Rect[] = []
 ): void {
   context.fillStyle = shadow;
   context.fillRect(room.left + shadowOffset, room.top + shadowOffset, room.width, room.height);
   context.fillStyle = fill;
   context.fillRect(room.left, room.top, room.width, room.height);
 
-  const thickness = 2;
+  const thickness = ROOM_FRAME_BORDER_THICKNESS;
   const openingLeft = clamp(opening.left, room.left, room.left + room.width);
   const openingRight = clamp(opening.left + opening.width, room.left, room.left + room.width);
 
@@ -8060,6 +8143,11 @@ function drawRoomFrame(
   } else {
     context.clearRect(openingLeft, room.top, openingRight - openingLeft, thickness);
   }
+
+  context.fillStyle = fill;
+  frameMasks.forEach((mask) => {
+    context.fillRect(mask.left, mask.top, mask.width, mask.height);
+  });
 }
 
 function drawPattern(
@@ -10561,6 +10649,7 @@ function drawSharedZone(zone: SharedZone, elapsed: number): void {
 function drawDepartment(department: SceneDepartment, elapsed: number): void {
   const room = rectToScreen(department.roomRect);
   const walkway = rectToScreen(department.walkwayRect);
+  const frameMasks = (departmentSharedWallState.frameMasksByDepartmentId.get(department.id) ?? []).map(rectToScreen);
   const departmentNpcs = npcs.filter((npc) => npc.department.id === department.id);
   const promptTargetDepartment = getPromptTargetDepartment();
   const focused = promptTargetDepartment?.id === department.id;
@@ -10620,7 +10709,8 @@ function drawDepartment(department: SceneDepartment, elapsed: number): void {
           : "#4c3c31",
     "#090a10",
     2,
-    department.approachSide
+    department.approachSide,
+    frameMasks
   );
   surfaceContext.fillStyle = "#4b3728";
   surfaceContext.fillRect(room.left + 3, room.top + 4, room.width - 6, room.height - 8);

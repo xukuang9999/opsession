@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
-    <title>工作的叠加态 | OpenClaw Agent Town Office</title>
+    <title>AI圈顶流小龙虾 | OpenClaw Agent Office</title>
     <script type="module" src="/src/main.ts"></script>
   </head>
   <body class="title-screen-active">
@@ -14,45 +14,146 @@
       <canvas id="scene"></canvas>
       <section id="start-screen" class="start-screen">
         <div class="start-screen__panel">
-          <div id="start-badge" class="start-screen__badge" data-i18n-text="start.badge">Pixel Opening</div>
-          <h2 id="start-title" class="start-screen__title" data-i18n-text="start.title">小龙虾在商业上的叠加态</h2>
-          <p id="start-subtitle" class="start-screen__subtitle" data-i18n-text="start.subtitle">4月26日活动</p>
-          <p id="start-copy" class="start-screen__copy" data-i18n-text="start.copy">
-            先选择界面语言，再进入像素风商业场景。
-          </p>
-          <div class="start-screen__actions">
-            <button
-              id="start-button"
-              class="start-screen__start"
-              type="button"
-              data-i18n-text="start.button"
-            >
-              START
-            </button>
-          </div>
-          <div id="start-language-panel" class="start-screen__language">
-            <div id="start-language-label" class="start-screen__language-label" data-i18n-text="start.languageLabel">
-              选择界面语言
+          <div class="start-screen__hero-layout">
+            <div class="start-screen__hero-column">
+              <div id="start-badge" class="start-screen__badge" data-i18n-text="start.badge">海报像素重建</div>
+              <div class="start-screen__speech">
+                <div id="start-kicker" class="start-screen__kicker" data-i18n-text="start.kicker">
+                  AI 同事灵魂拷问
+                </div>
+                <h2 id="start-title" class="start-screen__title" aria-label="AI圈顶流 OPEN CLAW 小龙虾">
+                  <span
+                    id="start-title-top"
+                    class="start-screen__title-line start-screen__title-line--main"
+                    data-i18n-text="start.titleTop"
+                  >
+                    AI圈顶流
+                  </span>
+                  <span
+                    id="start-title-middle"
+                    class="start-screen__title-line start-screen__title-line--middle"
+                    data-i18n-text="start.titleMiddle"
+                  >
+                    OPEN CLAW
+                  </span>
+                  <span
+                    id="start-title-bottom"
+                    class="start-screen__title-line start-screen__title-line--accent"
+                    data-i18n-text="start.titleBottom"
+                  >
+                    小龙虾
+                  </span>
+                </h2>
+                <p id="start-subtitle" class="start-screen__subtitle" data-i18n-text="start.subtitle">
+                  2026.04.26 · Monash Velos Accelerator
+                </p>
+              </div>
+              <p id="start-copy" class="start-screen__copy start-screen__copy--note" data-i18n-text="start.copy">
+                “OpenClaw”（又称“养龙虾”）是 2026 年初爆火的开源 AI 智能体。这次活动聚焦它如何从聊天走向执行、协作与真正可用。
+              </p>
             </div>
-            <div class="start-screen__language-actions">
+
+            <div class="start-screen__info-column">
+              <div class="start-screen__mascot-card">
+                <div class="start-screen__mascot-frame">
+                  <div id="start-lobster" class="start-screen__lobster" aria-hidden="true"></div>
+                </div>
+                <p class="start-screen__mascot-copy" data-i18n-text="start.mascotCopy">
+                  像素龙虾导览员已就位，活动信息按海报内容重建。
+                </p>
+              </div>
+
+              <div class="start-screen__meta-grid">
+                <article class="start-screen__meta-card">
+                  <div class="start-screen__meta-label" data-i18n-text="start.whenLabel">时间</div>
+                  <strong class="start-screen__meta-value" data-i18n-text="start.whenValue">
+                    2026年4月26日
+                    14:00 - 17:00
+                  </strong>
+                </article>
+                <article class="start-screen__meta-card">
+                  <div class="start-screen__meta-label" data-i18n-text="start.whereLabel">地点</div>
+                  <strong class="start-screen__meta-value" data-i18n-text="start.whereValue">
+                    Monash Velos Accelerator
+                    770 Blackburn Road, Clayton VIC 3168
+                  </strong>
+                </article>
+                <article class="start-screen__meta-card start-screen__meta-card--wide">
+                  <div class="start-screen__meta-label" data-i18n-text="start.topicsLabel">分享主题</div>
+                  <ul class="start-screen__meta-list">
+                    <li data-i18n-text="start.topicOne">AI Agent 如何走向真正可用？</li>
+                    <li data-i18n-text="start.topicTwo">OpenClaw 与工作的叠加态</li>
+                    <li data-i18n-text="start.topicThree">未来类 OpenClaw 工具在企业发展趋势</li>
+                  </ul>
+                </article>
+                <article class="start-screen__meta-card">
+                  <div class="start-screen__meta-label" data-i18n-text="start.agendaLabel">现场环节</div>
+                  <ul class="start-screen__meta-list">
+                    <li data-i18n-text="start.agendaOne">个人分享</li>
+                    <li data-i18n-text="start.agendaTwo">Q&amp;A 环节</li>
+                    <li data-i18n-text="start.agendaThree">自由讨论</li>
+                    <li data-i18n-text="start.agendaFour">Networking &amp; 聚餐</li>
+                  </ul>
+                </article>
+                <article class="start-screen__meta-card">
+                  <div class="start-screen__meta-label" data-i18n-text="start.hostsLabel">主办方</div>
+                  <strong class="start-screen__meta-value" data-i18n-text="start.hostsValue">
+                    AIDG · Boson Ventures
+                  </strong>
+                </article>
+                <article class="start-screen__meta-card start-screen__meta-card--wide">
+                  <div class="start-screen__meta-label" data-i18n-text="start.speakersLabel">分享嘉宾</div>
+                  <div class="start-screen__speaker-chips">
+                    <span class="start-screen__speaker-chip" data-i18n-text="start.speakerJeremy">
+                      Jeremy Zhang (Shiquan Zhang)
+                    </span>
+                    <span class="start-screen__speaker-chip" data-i18n-text="start.speakerMichael">
+                      Michael (Kuang Xu)
+                    </span>
+                    <span class="start-screen__speaker-chip" data-i18n-text="start.speakerJordan">
+                      Jordan (Tiancheng Zhang)
+                    </span>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </div>
+
+          <div class="start-screen__footer">
+            <div class="start-screen__actions">
               <button
-                id="start-language-zh"
-                class="start-screen__language-button"
+                id="start-button"
+                class="start-screen__start"
                 type="button"
-                data-language="zh-CN"
-                data-i18n-text="start.languageZh"
+                data-i18n-text="start.button"
               >
-                中文
+                进入像素会场
               </button>
-              <button
-                id="start-language-en"
-                class="start-screen__language-button"
-                type="button"
-                data-language="en"
-                data-i18n-text="start.languageEn"
-              >
-                English
-              </button>
+            </div>
+            <div id="start-language-panel" class="start-screen__language">
+              <div id="start-language-label" class="start-screen__language-label" data-i18n-text="start.languageLabel">
+                切换界面语言
+              </div>
+              <div class="start-screen__language-actions">
+                <button
+                  id="start-language-zh"
+                  class="start-screen__language-button"
+                  type="button"
+                  data-language="zh-CN"
+                  data-i18n-text="start.languageZh"
+                >
+                  中文
+                </button>
+                <button
+                  id="start-language-en"
+                  class="start-screen__language-button"
+                  type="button"
+                  data-language="en"
+                  data-i18n-text="start.languageEn"
+                >
+                  English
+                </button>
+              </div>
             </div>
           </div>
         </div>

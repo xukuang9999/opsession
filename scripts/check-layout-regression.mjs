@@ -255,7 +255,7 @@ async function main() {
     })
   );
   const minGap = Math.min(...rowGaps);
-  assert(minGap >= 8, `neighbor gap too small: ${minGap}`);
+  assert(minGap === 0, `neighbor departments should share a wall gap: ${minGap}`);
 
   const pixelAreas = Object.fromEntries(departments.map((layout) => [layout.id, layout.width * layout.height]));
   const bigBand = ["management", "development", "warehouse"];
