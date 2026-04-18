@@ -1,16 +1,19 @@
 const VERSION = "openclaw-sw-v2026-04-19-1";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
+const SCOPE_URL = new URL(self.registration.scope || self.location.href);
+const BASE_PATH = SCOPE_URL.pathname.replace(/\/$/, "");
+const withBasePath = (path) => `${BASE_PATH}${path}`;
 const APP_SHELL_URLS = [
-  "/",
-  "/index.html",
-  "/site.webmanifest",
-  "/favicon.svg",
-  "/icon-192.png",
-  "/icon-512.png",
-  "/apple-touch-icon.png",
-  "/og-card.svg",
-  "/robots.txt",
+  withBasePath("/"),
+  withBasePath("/index.html"),
+  withBasePath("/site.webmanifest"),
+  withBasePath("/favicon.svg"),
+  withBasePath("/icon-192.png"),
+  withBasePath("/icon-512.png"),
+  withBasePath("/apple-touch-icon.png"),
+  withBasePath("/og-card.svg"),
+  withBasePath("/robots.txt"),
 ];
 
 self.addEventListener("install", (event) => {
@@ -38,7 +41,7 @@ self.addEventListener("activate", (event) => {
 
 function isStaticAsset(pathname) {
   return (
-    pathname.startsWith("/assets/") ||
+    pathname.startsWith(withBasePath("/assets/")) ||
     pathname.endsWith(".js") ||
     pathname.endsWith(".css") ||
     pathname.endsWith(".png") ||
@@ -53,7 +56,7 @@ function isStaticAsset(pathname) {
 
 async function respondWithAppShell() {
   const cache = await caches.open(SHELL_CACHE);
-  return (await cache.match("/index.html")) ?? (await cache.match("/"));
+  return (await cache.match(withBasePath("/index.html"))) ?? (await cache.match(withBasePath("/")));
 }
 
 async function networkFirst(request) {

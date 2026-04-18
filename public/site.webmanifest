@@ -1,12 +1,12 @@
 {
-  "id": "/",
+  "id": "./",
   "name": "OpenClaw Agent Office",
   "short_name": "OpenClaw",
   "description": "20 分钟走完 30+ 个 OpenClaw AI Agent 落地场景的像素办公室演示。",
   "lang": "zh-CN",
   "dir": "ltr",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "landscape",
@@ -18,10 +18,10 @@
       "name": "从前台开始",
       "short_name": "前台",
       "description": "直接打开接待区，开始三张工单的开场演示。",
-      "url": "/#/z/reception",
+      "url": "./#/z/reception",
       "icons": [
         {
-          "src": "/icon-192.png",
+          "src": "icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
         }
@@ -31,10 +31,10 @@
       "name": "打开市场调研代理",
       "short_name": "市场调研",
       "description": "直接跳到市场部的第一个真实场景。",
-      "url": "/#/d/marketing/market-research",
+      "url": "./#/d/marketing/market-research",
       "icons": [
         {
-          "src": "/icon-192.png",
+          "src": "icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
         }
@@ -44,10 +44,10 @@
       "name": "查看工具箱总结",
       "short_name": "工具总结",
       "description": "直接打开餐厅区域，查看结尾工具卡总结。",
-      "url": "/#/z/cafeteria",
+      "url": "./#/z/cafeteria",
       "icons": [
         {
-          "src": "/icon-192.png",
+          "src": "icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
         }
@@ -56,19 +56,19 @@
   ],
   "icons": [
     {
-      "src": "/favicon.svg",
+      "src": "favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/icon-192.png",
+      "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
