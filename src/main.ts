@@ -1,7 +1,7 @@
 import "./style.css";
+import packageJson from "../package.json";
 import heroCapybaraSheetUrl from "./assets/hero-capybara-sheet.png";
-import lobsterGuideSheetUrl from "./assets/lobster-guide-sheet-strip.png";
-import lobsterGuideTitleSheetUrl from "./assets/lobster-guide-sheet.svg";
+import lobsterGuideSheetUrl from "./assets/lobster-guide-sheet.svg";
 import clawLibrarySceneFloorUrl from "./assets/clawlibrary-scene-floor.png";
 import clawLibrarySceneObjectsUrl from "./assets/clawlibrary-scene-objects.png";
 import officeLayoutConfig from "./office-layouts.json";
@@ -123,6 +123,7 @@ type PlayerState = {
   y: number;
   facing: number;
   step: number;
+  idleTime: number;
 };
 
 type Star = {
@@ -155,10 +156,45 @@ type TitleScreenLobster = {
   facing: number;
 };
 
+type IntroCinematicState = {
+  active: boolean;
+  time: number;
+  duration: number;
+  heroStart: Point;
+  heroEnd: Point;
+  guidePoint: Point;
+  overviewFocus: Point;
+  receptionFocus: Point;
+};
+
+type LobsterCompanionState = {
+  message: string;
+  visibleTimer: number;
+  cooldown: number;
+  facing: number;
+  accent: string;
+};
+
 type DataCatalog = {
   departments: Department[];
   thesisPoints: string[];
   uniqueSources: SourceItem[];
+};
+
+type PersistedOfficeState = {
+  version: 1;
+  language: UiLanguage;
+  enteredOffice: boolean;
+  player: {
+    x: number;
+    y: number;
+    facing: number;
+  };
+  completedScenarioIds: string[];
+  collectedInsightIds: string[];
+  completedSharedZoneIds?: string[];
+  uiMinimal: boolean;
+  presenterCountdownStartedAt: number | null;
 };
 
 type PresenterContactItem = {
@@ -169,6 +205,47 @@ type PresenterContactItem = {
   placeholder?: boolean;
 };
 
+type SearchResult = {
+  key: string;
+  kind: "scenario" | "department" | "shared-zone";
+  title: string;
+  subtitle: string;
+  detail: string;
+  score: number;
+  department?: SceneDepartment;
+  scenario?: Scenario;
+  zone?: SharedZone;
+};
+
+type PerformanceWithMemory = Performance & {
+  memory?: {
+    usedJSHeapSize: number;
+    totalJSHeapSize: number;
+    jsHeapSizeLimit: number;
+  };
+};
+
+const APP_BUILD_STAMP = "2026.04.18";
+const APP_VERSION = packageJson.version;
+const UI_LANGUAGE_STORAGE_KEY = "openclaw:ui-language";
+const OFFICE_STATE_STORAGE_KEY = "openclaw:office-state";
+const FAVORITES_STORAGE_KEY = "openclaw:favorites";
+const ONBOARDING_STORAGE_KEY = "openclaw:onboarding-seen";
+const EMERGENCY_RETURN_STORAGE_KEY = "openclaw:emergency-return";
+const DEBUG_MODE = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
+const PRESENTER_COUNTDOWN_DURATION_MS = 20 * 60 * 1000;
+const ONBOARDING_AUTO_DISMISS_MS = 3200;
+const AUTOSAVE_INTERVAL_MS = 30_000;
+
+function readStoredLanguage(): UiLanguage {
+  try {
+    const stored = window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
+    return stored === "en" || stored === "zh-CN" ? stored : "zh-CN";
+  } catch {
+    return "zh-CN";
+  }
+}
+
 const UI_TEXT = {
   "zh-CN": {
     documentTitle: "AI圈顶流小龙虾 | OpenClaw Agent Office",
@@ -178,8 +255,8 @@ const UI_TEXT = {
       titleTop: "AI圈顶流",
       titleMiddle: "OPEN CLAW",
       titleBottom: "小龙虾",
-      subtitle: "2026 4月26日 · Monash Velos Accelerator",
-      copy: "这个 app 只保留一个主题：OpenClaw 与工作的叠加态。",
+      subtitle: "2026年4月26日 · Monash Velos Accelerator",
+      copy: "",
       mascotCopy: "像素龙虾导览员已就位，页面内容只围绕“叠加态”展开。",
       topicsLabel: "主题",
       themePrimary: "OpenClaw 与工作的叠加态",
@@ -202,7 +279,7 @@ const UI_TEXT = {
     brand: {
       eyebrow: "海报像素入口",
       title: "AI圈顶流 OpenClaw 小龙虾",
-      subtitle: "2026 4月26日 · Monash Velos Accelerator",
+      subtitle: "2026年4月26日 · Monash Velos Accelerator",
       body: "从海报文案重建的像素活动入口；进入办公室后，可继续漫游 OpenClaw 在不同部门的落地场景。",
     },
     controls: {
@@ -221,6 +298,7 @@ const UI_TEXT = {
     },
     metrics: {
       title: "演示进度",
+      progressLabel: "完成度",
       completed: "已完成场景",
       impact: "执行力分数",
       zone: "当前区域",
@@ -252,6 +330,11 @@ const UI_TEXT = {
     },
     sources: {
       title: "参考来源",
+      industry: "行业报告",
+      product: "产品文档",
+      caseStudy: "案例与实务",
+      research: "研究资料",
+      other: "其他参考",
     },
     mobile: {
       zoomOut: "缩小",
@@ -262,8 +345,117 @@ const UI_TEXT = {
       title: "感谢参与本次体验",
       subtitle: "欢迎继续交流 OpenClaw",
       copy: "你已从办公室左侧出口离开本次导览。感谢参与，欢迎会后继续联系我交流 OpenClaw 在真实业务中的落地方式。",
+      debriefTitle: "本场回顾",
+      debriefCompleted: "已看场景",
+      debriefDepartments: "闭环部门",
+      debriefInsights: "洞察数",
+      debriefFavorites: "收藏场景",
+      debriefImpact: "累计执行分",
       contactTitle: "联系方式",
       restart: "返回办公室",
+    },
+    help: {
+      eyebrow: "快捷帮助",
+      title: "操作手册",
+      subtitle: "按 ? 随时打开这张卡，演讲卡壳时也能快速找回节奏。",
+      movementTitle: "移动与镜头",
+      movement: "用 <code>WASD</code> / 方向键移动，拖拽调整朝向，滚轮缩放镜头。",
+      interactionTitle: "互动与记录",
+      interaction: "靠近终端按 <code>E</code> 进入，靠近洞察按 <code>F</code> 记录；场景卡打开后按 <code>S</code> 可朗读当前内容；小地图和右侧列表都能跳转。",
+      shortcutsTitle: "关键快捷键",
+      shortcuts: "<code>P</code> 切 Presenter Mode，<code>?</code> 打开帮助，<code>Shift + Esc</code> 强制回到开始画面。",
+      mobileTitle: "移动端",
+      mobile: "点地面移动，点终端直接触发；移动端也保留了小地图与快速导航。",
+      closeHint: "按 Esc 或点击右上角关闭",
+      versionPrefix: "当前版本",
+      rescueEyebrow: "不慌按钮",
+      rescueTitle: "当前该讲什么",
+      rescueCurrent: "当前焦点",
+      rescueNext: "下一步",
+    },
+    onboarding: {
+      title: "第一次进办公室",
+      stepMove: "用 <code>WASD</code> / 方向键移动。",
+      stepInteract: "靠近终端按 <code>E</code>，靠近洞察按 <code>F</code>。",
+      stepLobster: "别忘了右下角的小龙虾，它会一直提醒下一步。",
+      dismiss: "知道了",
+    },
+    crash: {
+      title: "应用刚刚遇到一个问题。",
+      detail: "你的语言、进度和当前位置会保留；点一下即可回到开始画面。",
+      action: "恢复到开始画面",
+    },
+    presenter: {
+      countdownLabel: "演讲倒计时",
+      expired: "时间到",
+      halfwayNotice: "演讲已过半，可以准备切入中段高潮。",
+      fiveMinutesNotice: "还剩 5 分钟，开始准备结尾收束。",
+      oneMinuteNotice: "还剩 1 分钟，落 thesis 并准备收尾。",
+    },
+    speaker: {
+      nextLabel: "下一站推荐",
+      sceneLabel: "当前场景",
+      timerLabel: "场景计时",
+      notesButton: "打开 Speaker Notes",
+      sceneIdle: "未进入场景",
+      nextIdle: "自由漫游",
+      notesBlocked: "浏览器拦截了 Speaker Notes 窗口。",
+      notesWindowTitle: "演讲者备注",
+      noteCurrent: "当前焦点",
+      noteKeyPoints: "3 个要点",
+      noteNext: "下一站",
+      noteTimer: "场景计时",
+      noteStatus: "当前状态",
+      nextEtaPrefix: "预计",
+      nextEtaSuffix: "分钟",
+    },
+    search: {
+      eyebrow: "全局搜索",
+      title: "快速找到任意场景",
+      hint: "按 / 打开，输入“预算”“客服”“仓库”等关键词，直接跳到对应场景。",
+      placeholder: "搜索场景、部门、关键词…",
+      empty: "没找到相关场景，换个关键词试试。",
+      resultScenario: "场景",
+      resultDepartment: "部门",
+      resultSharedZone: "公共区",
+      defaultHint: "输入关键词后会出现匹配结果。",
+    },
+    dashboardPanel: {
+      eyebrow: "KPI 总览",
+      title: "全场景 Dashboard",
+      subtitle: "按 Shift + D 打开。这里汇总所有场景的 stat、完成状态与累计执行分。",
+      completed: "已完成",
+      impact: "累计执行分",
+      insights: "已记洞察",
+      departments: "已闭环部门",
+      open: "打开场景",
+      statLabel: "关键数据",
+      impactLabel: "执行力",
+    },
+    favorites: {
+      title: "收藏场景",
+      empty: "还没有收藏。打开场景后点收藏，或按 B 暂存到右侧。",
+      add: "收藏场景",
+      remove: "取消收藏",
+      added: "已加入收藏",
+      removed: "已移出收藏",
+    },
+    loading: {
+      startup: "正在启动办公室…",
+      ready: "办公室已就绪",
+    },
+    autosave: {
+      saved: "已自动保存",
+    },
+    offline: {
+      banner: "您已离线，部分功能不可用。",
+    },
+    routeError: {
+      title: "这个场景链接不存在",
+      action: "返回办公室",
+    },
+    version: {
+      prefix: "版本",
     },
     common: {
       close: "关闭",
@@ -278,7 +470,7 @@ const UI_TEXT = {
       titleMiddle: "OPEN CLAW",
       titleBottom: "LOBSTER",
       subtitle: "Apr 26, 2026 · Monash Velos Accelerator",
-      copy: 'This app now keeps a single theme: "OpenClaw and the superposition of work."',
+      copy: "",
       mascotCopy: 'The pixel lobster guide is live, and the page is now centered on the "superposition" theme only.',
       topicsLabel: "Theme",
       themePrimary: "OpenClaw and the superposition of work",
@@ -320,6 +512,7 @@ const UI_TEXT = {
     },
     metrics: {
       title: "Progress",
+      progressLabel: "Completion",
       completed: "Completed Scenes",
       impact: "Execution Score",
       zone: "Current Zone",
@@ -351,6 +544,11 @@ const UI_TEXT = {
     },
     sources: {
       title: "Sources",
+      industry: "Industry Reports",
+      product: "Product Docs",
+      caseStudy: "Cases & Practice",
+      research: "Research",
+      other: "Other References",
     },
     mobile: {
       zoomOut: "Zoom Out",
@@ -361,8 +559,117 @@ const UI_TEXT = {
       title: "Thanks For Joining",
       subtitle: "Let's Keep Talking About OpenClaw",
       copy: "You have left the walkthrough through the office exit on the left. Thanks for joining, and feel free to reach out after the session to continue the conversation.",
+      debriefTitle: "Session Debrief",
+      debriefCompleted: "Scenes Viewed",
+      debriefDepartments: "Closed Loops",
+      debriefInsights: "Insights",
+      debriefFavorites: "Saved Scenes",
+      debriefImpact: "Total Impact",
       contactTitle: "Contact",
       restart: "Return to Office",
+    },
+    help: {
+      eyebrow: "Quick Help",
+      title: "Control Guide",
+      subtitle: "Press ? at any time to reopen this card and recover your speaking rhythm.",
+      movementTitle: "Movement & Camera",
+      movement: "Use <code>WASD</code> / arrow keys to move, drag to turn, and scroll to zoom.",
+      interactionTitle: "Interaction & Capture",
+      interaction: "Press <code>E</code> near a terminal and <code>F</code> near an insight chip. With a scene card open, press <code>S</code> to narrate it aloud. The minimap and route list also support jump navigation.",
+      shortcutsTitle: "Key Shortcuts",
+      shortcuts: "<code>P</code> toggles Presenter Mode, <code>?</code> opens help, and <code>Shift + Esc</code> forces a return to the start screen.",
+      mobileTitle: "Mobile",
+      mobile: "Tap the floor to move and tap terminals directly to trigger them. The minimap and quick route list stay available on mobile.",
+      closeHint: "Press Esc or use the top-right close button",
+      versionPrefix: "Current version",
+      rescueEyebrow: "No-Panic Card",
+      rescueTitle: "What To Say Right Now",
+      rescueCurrent: "Current Focus",
+      rescueNext: "Next Step",
+    },
+    onboarding: {
+      title: "First Steps In The Office",
+      stepMove: "Use <code>WASD</code> / arrow keys to move.",
+      stepInteract: "Press <code>E</code> near terminals and <code>F</code> near insight chips.",
+      stepLobster: "Keep an eye on the lobster in the lower corner. It will keep nudging you to the next stop.",
+      dismiss: "Got it",
+    },
+    crash: {
+      title: "The app ran into a problem.",
+      detail: "Your language, progress, and position will be preserved. Use one click to return to the start screen.",
+      action: "Recover To Start Screen",
+    },
+    presenter: {
+      countdownLabel: "Presenter Countdown",
+      expired: "Time's Up",
+      halfwayNotice: "You are halfway through. Set up the mid-session peak now.",
+      fiveMinutesNotice: "Five minutes left. Start tightening the landing.",
+      oneMinuteNotice: "One minute left. Land the thesis and close cleanly.",
+    },
+    speaker: {
+      nextLabel: "Next Stop",
+      sceneLabel: "Current Scene",
+      timerLabel: "Scene Timer",
+      notesButton: "Open Speaker Notes",
+      sceneIdle: "No Scene Open",
+      nextIdle: "Free roam",
+      notesBlocked: "The browser blocked the Speaker Notes window.",
+      notesWindowTitle: "Speaker Notes",
+      noteCurrent: "Current Focus",
+      noteKeyPoints: "3 Key Points",
+      noteNext: "Next Stop",
+      noteTimer: "Scene Timer",
+      noteStatus: "Status",
+      nextEtaPrefix: "~",
+      nextEtaSuffix: " min",
+    },
+    search: {
+      eyebrow: "Global Search",
+      title: "Jump To Any Scene",
+      hint: "Press / and type keywords like budget, support, or warehouse to jump directly into a matching scene.",
+      placeholder: "Search scenes, departments, keywords…",
+      empty: "No matching scenes yet. Try another keyword.",
+      resultScenario: "Scene",
+      resultDepartment: "Department",
+      resultSharedZone: "Shared Zone",
+      defaultHint: "Start typing to see matching results.",
+    },
+    dashboardPanel: {
+      eyebrow: "KPI Overview",
+      title: "Scene Dashboard",
+      subtitle: "Press Shift + D to open. This panel aggregates every scenario stat, completion status, and total impact score.",
+      completed: "Completed",
+      impact: "Total Impact",
+      insights: "Insights",
+      departments: "Closed-Loop Depts",
+      open: "Open Scene",
+      statLabel: "Key Stat",
+      impactLabel: "Impact",
+    },
+    favorites: {
+      title: "Saved Scenes",
+      empty: "No saved scenes yet. Save one from a scene card, or press B while a scene is open.",
+      add: "Save Scene",
+      remove: "Unsave",
+      added: "Saved",
+      removed: "Removed",
+    },
+    loading: {
+      startup: "Starting the office…",
+      ready: "Office ready",
+    },
+    autosave: {
+      saved: "Autosaved",
+    },
+    offline: {
+      banner: "You are offline. Some functions are unavailable.",
+    },
+    routeError: {
+      title: "This scene link does not exist",
+      action: "Return to Office",
+    },
+    version: {
+      prefix: "Version",
     },
     common: {
       close: "Close",
@@ -412,10 +719,10 @@ const PRESENTER_CONTACT = {
   ] satisfies PresenterContactItem[],
 } as const;
 
-let currentUiLanguage: UiLanguage = "zh-CN";
-let baseDepartments = dataCatalogByLanguage["zh-CN"].departments;
-let currentThesisPoints = dataCatalogByLanguage["zh-CN"].thesisPoints;
-let currentUniqueSources = dataCatalogByLanguage["zh-CN"].uniqueSources;
+let currentUiLanguage: UiLanguage = readStoredLanguage();
+let baseDepartments = dataCatalogByLanguage[currentUiLanguage].departments;
+let currentThesisPoints = dataCatalogByLanguage[currentUiLanguage].thesisPoints;
+let currentUniqueSources = dataCatalogByLanguage[currentUiLanguage].uniqueSources;
 
 type DepartmentSeed = Department & {
   npcRoles: string[];
@@ -659,6 +966,29 @@ const MAX_VISIBLE_NPC_NAME_TAGS = 10;
 const MAX_OFFSCREEN_INTERACTION_INDICATORS = 3;
 const MAX_GROUND_INTERACTION_MARKERS = 3;
 const MAX_MINIMAP_INTERACTION_MARKERS = 5;
+const THESIS_ROTATION_INTERVAL_MS = 5000;
+const MODAL_ANIMATION_DURATION_MS = 220;
+const INTERACTION_FLASH_DURATION_MS = 110;
+const INTRO_CINEMATIC_DURATION = 7;
+const INTRO_CINEMATIC_HERO_START_TIME = 5;
+const INTRO_CINEMATIC_ARROW_TIME = 6;
+const LOBSTER_COMPANION_MESSAGE_MIN_INTERVAL = 45;
+const LOBSTER_COMPANION_MESSAGE_MAX_INTERVAL = 60;
+const LOBSTER_COMPANION_MESSAGE_DURATION = 5.2;
+const GAMEPAD_AXIS_THRESHOLD = 0.32;
+const KONAMI_OVERLAY_DURATION_MS = 5_000;
+const KONAMI_SEQUENCE = [
+  "ArrowUp",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowLeft",
+  "ArrowRight",
+  "KeyB",
+  "KeyA",
+] as const;
 const NPC_BUBBLE_TRIGGER_CHANCE = 0.0035;
 const NPC_AMBIENT_CONVERSATION_CHANCE = 0.0022;
 const NPC_AMBIENT_CONVERSATION_DISTANCE = 18;
@@ -789,15 +1119,55 @@ const startTitleBottom = requireElement<HTMLElement>("#start-title-bottom");
 const startSubtitle = requireElement<HTMLElement>("#start-subtitle");
 const startCopy = requireElement<HTMLElement>("#start-copy");
 const startButton = requireElement<HTMLButtonElement>("#start-button");
+const startupLoadingLabel = requireElement<HTMLElement>("#startup-loading-label");
+const startupLoadingFill = requireElement<HTMLElement>("#startup-loading-fill");
 const startLanguagePanel = requireElement<HTMLDivElement>("#start-language-panel");
 const startLanguageLabel = requireElement<HTMLElement>("#start-language-label");
 const startLanguageZhButton = requireElement<HTMLButtonElement>("#start-language-zh");
 const startLanguageEnButton = requireElement<HTMLButtonElement>("#start-language-en");
 const startLobster = requireElement<HTMLDivElement>("#start-lobster");
 const thankYouScreen = requireElement<HTMLElement>("#thank-you-screen");
+const thankYouDebriefList = requireElement<HTMLDivElement>("#thanks-debrief-list");
 const thankYouContactList = requireElement<HTMLDivElement>("#thanks-contact-list");
 const thankYouRestartButton = requireElement<HTMLButtonElement>("#thanks-restart-button");
+const presenterCountdown = requireElement<HTMLDivElement>("#presenter-countdown");
+const presenterCountdownLabel = requireElement<HTMLElement>("#presenter-countdown-label");
+const presenterCountdownTime = requireElement<HTMLElement>("#presenter-countdown-time");
+const crashBanner = requireElement<HTMLDivElement>("#crash-banner");
+const crashBannerMessage = requireElement<HTMLElement>("#crash-banner-message");
+const crashRecoverButton = requireElement<HTMLButtonElement>("#crash-recover-button");
+const networkBanner = requireElement<HTMLDivElement>("#network-banner");
+const routeErrorScreen = requireElement<HTMLElement>("#route-error-screen");
+const routeErrorTitle = requireElement<HTMLElement>("#route-error-title");
+const routeErrorDetail = requireElement<HTMLElement>("#route-error-detail");
+const routeErrorActionButton = requireElement<HTMLButtonElement>("#route-error-action");
+const onboardingOverlay = requireElement<HTMLElement>("#onboarding-overlay");
+const onboardingCloseButton = requireElement<HTMLButtonElement>("#onboarding-close");
+const helpOverlay = requireElement<HTMLElement>("#help-overlay");
+const helpCloseButton = requireElement<HTMLButtonElement>("#help-close");
+const helpVersion = requireElement<HTMLElement>("#help-version");
+const helpRescueContent = requireElement<HTMLDivElement>("#help-rescue-content");
+const searchOverlay = requireElement<HTMLElement>("#search-overlay");
+const searchCloseButton = requireElement<HTMLButtonElement>("#search-close");
+const searchInput = requireElement<HTMLInputElement>("#search-input");
+const searchResults = requireElement<HTMLDivElement>("#search-results");
+const dashboardOverlay = requireElement<HTMLElement>("#dashboard-overlay");
+const dashboardCloseButton = requireElement<HTMLButtonElement>("#dashboard-close");
+const dashboardSummary = requireElement<HTMLDivElement>("#dashboard-summary");
+const dashboardResults = requireElement<HTMLDivElement>("#dashboard-results");
+const debugHud = requireElement<HTMLElement>("#debug-hud");
+const debugFps = requireElement<HTMLElement>("#debug-fps");
+const debugMemory = requireElement<HTMLElement>("#debug-memory");
+const debugLongTasks = requireElement<HTMLElement>("#debug-longtasks");
+const debugState = requireElement<HTMLElement>("#debug-state");
+const debugActions = requireElement<HTMLDivElement>("#debug-actions");
+const buildVersion = requireElement<HTMLDivElement>("#build-version");
+const autosaveIndicator = requireElement<HTMLDivElement>("#autosave-indicator");
 const thesisList = requireElement<HTMLUListElement>("#thesis-list");
+const presenterNextTarget = requireElement<HTMLElement>("#presenter-next-target");
+const presenterCurrentScene = requireElement<HTMLElement>("#presenter-current-scene");
+const presenterSceneTimer = requireElement<HTMLElement>("#presenter-scene-timer");
+const speakerNotesButton = requireElement<HTMLButtonElement>("#speaker-notes-button");
 const departmentList = requireElement<HTMLDivElement>("#department-list");
 const sourceList = requireElement<HTMLDivElement>("#source-list");
 const prompt = requireElement<HTMLDivElement>("#prompt");
@@ -810,6 +1180,8 @@ const mapLegend = requireElement<HTMLDivElement>("#map-legend");
 const mapFloorIndicator = requireElement<HTMLElement>("#map-floor-indicator");
 const uiToggleButton = requireElement<HTMLButtonElement>("#ui-toggle");
 const completedCountElement = requireElement<HTMLElement>("#completed-count");
+const completionProgressText = requireElement<HTMLElement>("#completion-progress-text");
+const completionProgressFill = requireElement<HTMLDivElement>("#completion-progress-fill");
 const impactScoreElement = requireElement<HTMLElement>("#impact-score");
 const currentZoneElement = requireElement<HTMLElement>("#current-zone");
 const executionStageElement = requireElement<HTMLElement>("#execution-stage");
@@ -822,6 +1194,7 @@ const officeTrafficElement = requireElement<HTMLElement>("#office-traffic");
 const focusRoomElement = requireElement<HTMLElement>("#focus-room");
 const mobileControls = requireElement<HTMLDivElement>("#mobile-controls");
 const toast = requireElement<HTMLDivElement>("#toast");
+const interactionFlash = requireElement<HTMLDivElement>("#interaction-flash");
 const dashboardTime = requireElement<HTMLElement>("#dashboard-time");
 const dashboardDate = requireElement<HTMLElement>("#dashboard-date");
 const dashboardSessionLabel = requireElement<HTMLElement>("#dashboard-session-label");
@@ -904,7 +1277,7 @@ preparePlayerSpriteSheet(heroCapybaraSheetUrl);
 prepareLobsterSpriteSheet(lobsterGuideSheetUrl);
 prepareSceneLayer("floorImage", clawLibrarySceneFloorUrl);
 prepareSceneLayer("objectsImage", clawLibrarySceneObjectsUrl);
-startLobster.style.backgroundImage = `url(${lobsterGuideTitleSheetUrl})`;
+startLobster.style.backgroundImage = `url(${lobsterGuideSheetUrl})`;
 
 function getLocalizedString(path: string): string {
   let current: unknown = UI_TEXT[currentUiLanguage];
@@ -1186,6 +1559,107 @@ function translateRuntimeMarkup(markup: string): string {
   return translateRuntimeCopy(markup);
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .split("&").join("&amp;")
+    .split("<").join("&lt;")
+    .split(">").join("&gt;")
+    .split('"').join("&quot;")
+    .split("'").join("&#39;");
+}
+
+function formatLocalizedNumber(value: number): string {
+  return new Intl.NumberFormat(getLocalizedString("dashboard.locale")).format(value);
+}
+
+function getScenarioSourceDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function getImpactScoreProgress(impactScore: number): number {
+  const maxImpactScore = Math.max(...allScenarios.map((scenario) => scenario.impactScore));
+  return clamp((impactScore / Math.max(1, maxImpactScore)) * 100, 8, 100);
+}
+
+function renderImpactMeterMarkup(impactScore: number, label = getLocalizedString("dashboardPanel.impactLabel")): string {
+  return `
+    <div class="impact-meter">
+      <div class="impact-meter__label">
+        <span>${label}</span>
+        <strong>+${formatLocalizedNumber(impactScore)}</strong>
+      </div>
+      <div class="impact-meter__track">
+        <div class="impact-meter__fill" style="width:${getImpactScoreProgress(impactScore)}%;"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderScenarioStatMarkup(stat: string): string {
+  const safe = escapeHtml(stat);
+  return safe.replace(
+    /((?:USD|CNY)\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:万|亿|k|K|m|M|b|B|million|billion))?|\$\d[\d,]*(?:\.\d+)?(?:\s?(?:万|亿|k|K|m|M|b|B|million|billion))?|\d[\d,]*(?:\.\d+)?%|\d[\d,]*(?:\.\d+)?(?:\s?(?:hours?|days?|weeks?|months?|years?|km|kilometers?|miles?|x|倍|天|小时|公里)))+/g,
+    '<span class="stat-emphasis">$1</span>'
+  );
+}
+
+function findScenarioRecordById(scenarioId: string): { department: SceneDepartment; scenario: Scenario } | null {
+  for (const department of departments) {
+    const scenario = department.scenarios.find((item) => item.id === scenarioId);
+    if (scenario) {
+      return { department, scenario };
+    }
+  }
+  return null;
+}
+
+function isScenarioFavorited(scenarioId: string): boolean {
+  return favoriteScenarios.has(scenarioId);
+}
+
+function getFavoriteScenarioEntries(): Array<{ department: SceneDepartment; scenario: Scenario }> {
+  return Array.from(favoriteScenarios)
+    .map((scenarioId) => findScenarioRecordById(scenarioId))
+    .filter((entry): entry is { department: SceneDepartment; scenario: Scenario } => Boolean(entry))
+    .sort((left, right) => right.scenario.impactScore - left.scenario.impactScore);
+}
+
+function toggleFavoriteScenario(scenarioId: string): boolean {
+  const record = findScenarioRecordById(scenarioId);
+  if (!record) {
+    return false;
+  }
+
+  const nextFavorited = !favoriteScenarios.has(scenarioId);
+  if (nextFavorited) {
+    favoriteScenarios.add(scenarioId);
+  } else {
+    favoriteScenarios.delete(scenarioId);
+  }
+  persistFavoriteScenarios();
+  renderDepartmentList();
+  renderThankYouDebrief();
+  if (dashboardOverlayState.active) {
+    renderDashboardOverlay();
+  }
+  showToast(
+    nextFavorited
+      ? pickUiText(
+        `<strong>${record.scenario.title}</strong> ${getLocalizedString("favorites.added")}`,
+        `<strong>${record.scenario.title}</strong> ${getLocalizedString("favorites.added")}`
+      )
+      : pickUiText(
+        `<strong>${record.scenario.title}</strong> ${getLocalizedString("favorites.removed")}`,
+        `<strong>${record.scenario.title}</strong> ${getLocalizedString("favorites.removed")}`
+      )
+  );
+  return nextFavorited;
+}
+
 function getDepartmentUiLabel(department: SceneDepartment): string {
   return isEnglishUi() ? department.name : department.shortName;
 }
@@ -1236,9 +1710,1288 @@ function renderThankYouContactList(): void {
   thankYouContactList.innerHTML = `${presenterCard}${detailCards}`;
 }
 
+function renderThankYouDebrief(): void {
+  const completedCount = completedScenarios.size;
+  const completedDepartments = getCompletedDepartmentCount();
+  const totalImpact = allScenarios
+    .filter((scenario) => completedScenarios.has(scenario.id))
+    .reduce((sum, scenario) => sum + scenario.impactScore, 0);
+  const debriefItems = [
+    {
+      label: getLocalizedString("thanks.debriefCompleted"),
+      value: `${formatLocalizedNumber(completedCount)}/${formatLocalizedNumber(allScenarios.length)}`,
+    },
+    {
+      label: getLocalizedString("thanks.debriefDepartments"),
+      value: `${formatLocalizedNumber(completedDepartments)}/${formatLocalizedNumber(departments.length)}`,
+    },
+    {
+      label: getLocalizedString("thanks.debriefInsights"),
+      value: formatLocalizedNumber(collectedInsights.size),
+    },
+    {
+      label: getLocalizedString("thanks.debriefFavorites"),
+      value: formatLocalizedNumber(favoriteScenarios.size),
+    },
+    {
+      label: getLocalizedString("thanks.debriefImpact"),
+      value: `+${formatLocalizedNumber(totalImpact)}`,
+    },
+  ];
+  const topFavorites = getFavoriteScenarioEntries().slice(0, 3);
+  thankYouDebriefList.innerHTML = `
+    <div class="thanks-screen__debrief-grid">
+      ${debriefItems.map((item) => `
+        <div class="thanks-screen__debrief-item">
+          <div class="thanks-screen__debrief-label">${item.label}</div>
+          <strong>${item.value}</strong>
+        </div>
+      `).join("")}
+    </div>
+    ${topFavorites.length > 0
+      ? `<div class="thanks-screen__debrief-note">${pickUiText("本次收藏：", "Saved this session: ")}${topFavorites.map((item) => item.scenario.title).join(" / ")}</div>`
+      : ""}`;
+}
+
 function syncThankYouScreenUi(): void {
   document.body.classList.toggle("thank-you-screen-active", thankYouScreenState.active);
   thankYouScreen.setAttribute("aria-hidden", String(!thankYouScreenState.active));
+}
+
+function readStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage failures and keep the session running.
+  }
+}
+
+function removeStorage(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore storage failures and keep the session running.
+  }
+}
+
+function markStartupAssetReady(): void {
+  startupLoadState.loaded = Math.min(startupLoadState.total, startupLoadState.loaded + 1);
+  startupLoadState.ready = startupLoadState.loaded >= startupLoadState.total;
+  updateStartupLoadingUi();
+}
+
+function updateStartupLoadingUi(): void {
+  const progress = startupLoadState.total === 0 ? 1 : startupLoadState.loaded / startupLoadState.total;
+  startupLoadingFill.style.width = `${Math.round(progress * 100)}%`;
+  startupLoadingLabel.textContent = startupLoadState.ready
+    ? getLocalizedString("loading.ready")
+    : `${getLocalizedString("loading.startup")} ${startupLoadState.loaded}/${startupLoadState.total}`;
+  startButton.disabled = !startupLoadState.ready;
+}
+
+function updateBuildVersionLabel(): void {
+  const versionLabel = `${getLocalizedString("version.prefix")} v${APP_VERSION} · build ${APP_BUILD_STAMP}`;
+  buildVersion.textContent = versionLabel;
+  helpVersion.textContent = `${getLocalizedString("help.versionPrefix")} · v${APP_VERSION} · build ${APP_BUILD_STAMP}`;
+}
+
+function syncDebugHudUi(): void {
+  debugHud.classList.toggle("hidden", !debugHudState.enabled);
+  debugHud.setAttribute("aria-hidden", String(!debugHudState.enabled));
+}
+
+function formatDebugMemoryLabel(): string {
+  const memory = (performance as PerformanceWithMemory).memory;
+  if (!memory || memory.jsHeapSizeLimit <= 0) {
+    return "n/a";
+  }
+
+  const usedMb = memory.usedJSHeapSize / (1024 * 1024);
+  const totalMb = memory.jsHeapSizeLimit / (1024 * 1024);
+  return `${usedMb.toFixed(1)}/${totalMb.toFixed(0)}MB`;
+}
+
+function getDebugStateSummary(): string {
+  const currentArea = activeDepartmentId
+    ? departments.find((department) => department.id === activeDepartmentId)?.shortName ?? activeDepartmentId
+    : activeSharedZoneId
+      ? sharedZones.find((zone) => zone.id === activeSharedZoneId)?.label ?? activeSharedZoneId
+      : pickUiText("走廊", "Corridor");
+  const presenterScene = presenterSceneState.scenarioId
+    ? findScenarioRecordById(presenterSceneState.scenarioId)?.scenario.title ?? presenterSceneState.scenarioId
+    : modalSharedZone
+      ? getSharedZoneUiLabel(modalSharedZone)
+      : pickUiText("未开场景卡", "No modal open");
+
+  return pickUiText(
+    `区域 ${currentArea} · 场景 ${presenterScene} · 已完成 ${completedScenarios.size}/${allScenarios.length} · 洞察 ${collectedInsights.size}`,
+    `Zone ${currentArea} · Scene ${presenterScene} · Done ${completedScenarios.size}/${allScenarios.length} · Insights ${collectedInsights.size}`
+  );
+}
+
+function renderDebugActions(): void {
+  if (!debugHudState.enabled) {
+    return;
+  }
+
+  const sharedZoneButtons = sharedZones.map((zone) => `
+    <button class="debug-hud__button" type="button" data-debug-target="zone:${zone.id}">
+      <strong>${getSharedZoneUiLabel(zone)}</strong>
+      <span>${pickUiText("公共区快速跳转", "Shared-zone jump")}</span>
+    </button>
+  `);
+  const scenarioButtons = departments.flatMap((department) =>
+    department.scenarios.map((scenario) => `
+      <button class="debug-hud__button" type="button" data-debug-target="scenario:${scenario.id}">
+        <strong>${department.shortName} · ${scenario.title}</strong>
+        <span>${scenario.hook}</span>
+      </button>
+    `)
+  );
+
+  debugActions.innerHTML = translateRuntimeMarkup(
+    `${sharedZoneButtons.join("")}${scenarioButtons.join("")}`
+  );
+}
+
+function renderDebugHud(): void {
+  if (!debugHudState.enabled) {
+    return;
+  }
+
+  debugFps.textContent = debugHudState.fps > 0 ? debugHudState.fps.toFixed(1) : "--";
+  debugMemory.textContent = formatDebugMemoryLabel();
+  debugLongTasks.textContent = debugHudState.longTaskCount > 0
+    ? `${debugHudState.longTaskCount} / ${debugHudState.lastLongTaskMs.toFixed(0)}ms`
+    : "0";
+  debugState.textContent = getDebugStateSummary();
+}
+
+function activateDebugTarget(value: string): void {
+  if (value.startsWith("zone:")) {
+    const zoneId = value.slice("zone:".length);
+    const zone = sharedZones.find((item) => item.id === zoneId) ?? null;
+    if (!zone) {
+      return;
+    }
+    teleportToSharedZone(zone);
+    openSharedZoneModal(zone);
+    return;
+  }
+
+  if (value.startsWith("scenario:")) {
+    const scenarioId = value.slice("scenario:".length);
+    const record = findScenarioRecordById(scenarioId);
+    if (!record) {
+      return;
+    }
+    teleportToDepartment(record.department);
+    openDepartmentModal(record.department, record.scenario.id);
+  }
+}
+
+function setupDebugPerformanceObserver(): void {
+  if (!debugHudState.enabled || typeof PerformanceObserver === "undefined") {
+    return;
+  }
+
+  try {
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        debugHudState.longTaskCount += 1;
+        debugHudState.lastLongTaskMs = entry.duration;
+      }
+      renderDebugHud();
+    });
+    observer.observe({ type: "longtask", buffered: true } as PerformanceObserverInit);
+    debugHudState.observer = observer;
+  } catch {
+    debugHudState.observer = null;
+  }
+}
+
+function updateDebugFps(now: number): void {
+  if (!debugHudState.enabled) {
+    return;
+  }
+
+  debugHudState.frameCount += 1;
+  const sampleElapsed = now - debugHudState.frameSampleStartedAt;
+  if (sampleElapsed < 500) {
+    return;
+  }
+
+  debugHudState.fps = (debugHudState.frameCount * 1000) / Math.max(sampleElapsed, 1);
+  debugHudState.frameCount = 0;
+  debugHudState.frameSampleStartedAt = now;
+  renderDebugHud();
+}
+
+function syncAutosaveIndicatorUi(visible: boolean): void {
+  autosaveIndicator.classList.toggle("hidden", !visible);
+}
+
+function showAutosaveIndicator(): void {
+  autosaveIndicator.textContent = getLocalizedString("autosave.saved");
+  syncAutosaveIndicatorUi(true);
+  if (autosaveIndicatorTimer !== null) {
+    window.clearTimeout(autosaveIndicatorTimer);
+  }
+  autosaveIndicatorTimer = window.setTimeout(() => {
+    syncAutosaveIndicatorUi(false);
+    autosaveIndicatorTimer = null;
+  }, 1600);
+}
+
+function syncHelpOverlayUi(): void {
+  helpOverlay.classList.toggle("hidden", !helpOverlayState.active);
+  helpOverlay.setAttribute("aria-hidden", String(!helpOverlayState.active));
+  document.body.classList.toggle("help-open", helpOverlayState.active);
+}
+
+function syncSearchOverlayUi(): void {
+  searchOverlay.classList.toggle("hidden", !searchOverlayState.active);
+  searchOverlay.setAttribute("aria-hidden", String(!searchOverlayState.active));
+}
+
+function syncDashboardOverlayUi(): void {
+  dashboardOverlay.classList.toggle("hidden", !dashboardOverlayState.active);
+  dashboardOverlay.setAttribute("aria-hidden", String(!dashboardOverlayState.active));
+}
+
+function closeHelpOverlay(): void {
+  if (!helpOverlayState.active) {
+    return;
+  }
+
+  helpOverlayState.active = false;
+  syncHelpOverlayUi();
+  helpCloseButton.blur();
+  if (!hasSeenOnboarding()) {
+    maybeShowOnboarding();
+  }
+}
+
+function openHelpOverlay(): void {
+  keys.clear();
+  touchControls.clear();
+  clearMobileMoveTarget();
+  dismissOnboarding(false);
+  helpOverlayState.active = true;
+  syncHelpOverlayUi();
+  helpCloseButton.focus();
+}
+
+function toggleHelpOverlay(): void {
+  if (helpOverlayState.active) {
+    closeHelpOverlay();
+    return;
+  }
+
+  openHelpOverlay();
+}
+
+function updateKonamiSequence(code: string): void {
+  const expectedCode = KONAMI_SEQUENCE[konamiState.index];
+  if (code === expectedCode) {
+    konamiState.index += 1;
+    if (konamiState.index >= KONAMI_SEQUENCE.length) {
+      konamiState.index = 0;
+      konamiState.activeUntil = performance.now() + KONAMI_OVERLAY_DURATION_MS;
+      showToast(
+        pickUiText("Konami code 生效，小龙虾开始跳舞 5 秒。", "Konami code unlocked. Lobster dance mode for 5 seconds.")
+      );
+    }
+    return;
+  }
+
+  konamiState.index = code === KONAMI_SEQUENCE[0] ? 1 : 0;
+}
+
+function syncNetworkBannerUi(): void {
+  networkBanner.classList.toggle("hidden", !networkState.offline);
+}
+
+function syncRouteErrorUi(): void {
+  routeErrorScreen.classList.toggle("hidden", !routeErrorState.active);
+  routeErrorScreen.setAttribute("aria-hidden", String(!routeErrorState.active));
+  document.body.classList.toggle("route-error-active", routeErrorState.active);
+  routeErrorTitle.textContent = getLocalizedString("routeError.title");
+  routeErrorActionButton.textContent = getLocalizedString("routeError.action");
+  const routeMarkup = routeErrorState.path
+    ? pickUiText(
+      `链接 <code>${escapeHtml(routeErrorState.path)}</code> 不存在、已失效，或不再对应当前场景。你可以直接返回办公室继续漫游。`,
+      `The deep link <code>${escapeHtml(routeErrorState.path)}</code> does not exist, has expired, or no longer maps to a valid scene. Return to the office to keep exploring.`
+    )
+    : pickUiText(
+      "当前链接不存在、已失效，或不再对应当前场景。你可以直接返回办公室继续漫游。",
+      "This deep link does not exist, has expired, or no longer maps to a valid scene. Return to the office to keep exploring."
+    );
+  routeErrorDetail.innerHTML = translateRuntimeMarkup(routeMarkup);
+}
+
+function hasSeenOnboarding(): boolean {
+  return readStorage(ONBOARDING_STORAGE_KEY) === "1";
+}
+
+function syncOnboardingOverlayUi(): void {
+  onboardingOverlay.classList.toggle("hidden", !onboardingState.visible);
+  onboardingOverlay.setAttribute("aria-hidden", String(!onboardingState.visible));
+}
+
+function dismissOnboarding(markSeen: boolean): void {
+  if (onboardingState.timer !== null) {
+    window.clearTimeout(onboardingState.timer);
+    onboardingState.timer = null;
+  }
+
+  onboardingState.visible = false;
+  syncOnboardingOverlayUi();
+  if (markSeen) {
+    writeStorage(ONBOARDING_STORAGE_KEY, "1");
+  }
+}
+
+function maybeShowOnboarding(): void {
+  if (
+    hasSeenOnboarding() ||
+    onboardingState.visible ||
+    helpOverlayState.active ||
+    isTitleScreenActive() ||
+    introCinematicState.active ||
+    isThankYouScreenActive()
+  ) {
+    return;
+  }
+
+  onboardingState.visible = true;
+  syncOnboardingOverlayUi();
+  onboardingState.timer = window.setTimeout(() => {
+    dismissOnboarding(true);
+  }, ONBOARDING_AUTO_DISMISS_MS);
+}
+
+function syncCrashRecoveryUi(): void {
+  crashBanner.classList.toggle("hidden", !crashRecoveryState.active);
+}
+
+function showCrashRecoveryBanner(errorLike?: unknown): void {
+  if (crashRecoveryState.active) {
+    return;
+  }
+
+  crashRecoveryState.active = true;
+  crashBannerMessage.textContent = getLocalizedString("crash.detail");
+  syncCrashRecoveryUi();
+  if (errorLike) {
+    console.error(errorLike);
+  }
+}
+
+function syncPresenterCountdownUi(): void {
+  presenterCountdownLabel.textContent = getLocalizedString("presenter.countdownLabel");
+  updatePresenterCountdown();
+}
+
+function formatCountdown(remainingMs: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function primePresenterMilestones(): void {
+  presenterMilestonesShown.clear();
+  if (presenterCountdownState.startedAt === null) {
+    return;
+  }
+
+  const elapsedMs = Date.now() - presenterCountdownState.startedAt;
+  const remainingMs = Math.max(0, PRESENTER_COUNTDOWN_DURATION_MS - elapsedMs);
+  if (remainingMs <= 10 * 60_000) {
+    presenterMilestonesShown.add("halfway");
+  }
+  if (remainingMs <= 5 * 60_000) {
+    presenterMilestonesShown.add("fiveMinutes");
+  }
+  if (remainingMs <= 60_000) {
+    presenterMilestonesShown.add("oneMinute");
+  }
+}
+
+function maybeShowPresenterMilestone(remainingMs: number): void {
+  if (!uiMinimal || isTitleScreenActive() || isThankYouScreenActive()) {
+    return;
+  }
+
+  const milestones = [
+    { key: "halfway", threshold: 10 * 60_000, messageKey: "presenter.halfwayNotice" },
+    { key: "fiveMinutes", threshold: 5 * 60_000, messageKey: "presenter.fiveMinutesNotice" },
+    { key: "oneMinute", threshold: 60_000, messageKey: "presenter.oneMinuteNotice" },
+  ] as const;
+
+  for (const milestone of milestones) {
+    if (remainingMs <= milestone.threshold && !presenterMilestonesShown.has(milestone.key)) {
+      presenterMilestonesShown.add(milestone.key);
+      showToast(getLocalizedString(milestone.messageKey));
+    }
+  }
+}
+
+function updatePresenterCountdown(): void {
+  if (presenterCountdownState.startedAt === null) {
+    presenterCountdown.dataset.state = "idle";
+    presenterCountdownTime.textContent = formatCountdown(PRESENTER_COUNTDOWN_DURATION_MS);
+    return;
+  }
+
+  const elapsedMs = Date.now() - presenterCountdownState.startedAt;
+  const remainingMs = Math.max(0, PRESENTER_COUNTDOWN_DURATION_MS - elapsedMs);
+  presenterCountdownTime.textContent = remainingMs > 0 ? formatCountdown(remainingMs) : getLocalizedString("presenter.expired");
+
+  let nextState = "normal";
+  if (remainingMs <= 60_000) {
+    nextState = "danger";
+  } else if (remainingMs <= 5 * 60_000) {
+    nextState = "warning";
+  }
+  presenterCountdown.dataset.state = nextState;
+  maybeShowPresenterMilestone(remainingMs);
+}
+
+function maybeStartPresenterCountdown(): void {
+  if (uiMinimal && presenterCountdownState.startedAt === null) {
+    presenterCountdownState.startedAt = Date.now();
+    presenterMilestonesShown.clear();
+  }
+  updatePresenterCountdown();
+}
+
+function formatPresenterDuration(durationMs: number | null): string {
+  if (durationMs === null) {
+    return "00:00";
+  }
+  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function getScenarioTalkEstimateMinutes(scenario: Scenario): number {
+  return clamp(Math.round((scenario.workflow.length + scenario.outputs.length + 1) / 3), 1, 4);
+}
+
+function getRecommendedDepartmentScenario(department: SceneDepartment): Scenario | null {
+  return department.scenarios.find((scenario) => !completedScenarios.has(scenario.id)) ?? department.scenarios[0] ?? null;
+}
+
+function updatePresenterSceneContext(
+  key: string,
+  options: {
+    scenarioId?: string;
+    departmentId?: string;
+    zoneId?: string;
+  }
+): void {
+  const shouldReset = modal.classList.contains("hidden") || presenterSceneState.key !== key;
+  presenterSceneState.key = key;
+  presenterSceneState.scenarioId = options.scenarioId ?? "";
+  presenterSceneState.departmentId = options.departmentId ?? "";
+  presenterSceneState.zoneId = options.zoneId ?? "";
+  if (shouldReset || presenterSceneState.startedAt === null) {
+    presenterSceneState.startedAt = Date.now();
+  }
+}
+
+function clearPresenterSceneContext(): void {
+  presenterSceneState.key = "";
+  presenterSceneState.scenarioId = "";
+  presenterSceneState.departmentId = "";
+  presenterSceneState.zoneId = "";
+  presenterSceneState.startedAt = null;
+}
+
+function getPresenterCurrentSceneSummary(): {
+  title: string;
+  subtitle: string;
+  points: string[];
+  timerText: string;
+} {
+  const timerText = formatPresenterDuration(
+    presenterSceneState.startedAt === null ? null : Date.now() - presenterSceneState.startedAt
+  );
+
+  if (modalDepartment) {
+    const scenario = presenterSceneState.scenarioId
+      ? modalDepartment.scenarios.find((item) => item.id === presenterSceneState.scenarioId) ?? null
+      : null;
+    if (scenario) {
+      return {
+        title: `${modalDepartment.shortName} · ${scenario.title}`,
+        subtitle: scenario.hook,
+        points: [
+          scenario.problem,
+          `${pickUiText("产出", "Outputs")}：${scenario.outputs.join(" / ")}`,
+          `${pickUiText("结果", "Result")}：${scenario.demoResult}`,
+        ],
+        timerText,
+      };
+    }
+
+    return {
+      title: `${modalDepartment.shortName} · ${pickUiText("部门总览", "Department Overview")}`,
+      subtitle: modalDepartment.intro,
+      points: [
+        modalDepartment.speakerNote,
+        `${pickUiText("待讲场景", "Queued scenes")}：${modalDepartment.scenarios.map((scenario) => scenario.title).slice(0, 3).join(" / ")}`,
+        `${pickUiText("当前闭环", "Current loop")}：${getDepartmentPendingWorkSummary(modalDepartment)}`,
+      ],
+      timerText,
+    };
+  }
+
+  if (modalSharedZone) {
+    const copy = getSharedZoneModalCopy(modalSharedZone);
+    return {
+      title: copy.title,
+      subtitle: copy.intro,
+      points: [
+        copy.highlight,
+        ...copy.cards.slice(0, 2).map((card) => `${card.title}：${card.hook}`),
+      ].slice(0, 3),
+      timerText,
+    };
+  }
+
+  return {
+    title: getLocalizedString("speaker.sceneIdle"),
+    subtitle: pickUiText("当前没有打开场景卡。", "No scene card is open right now."),
+    points: [
+      pickUiText("可以按 / 搜索、按 D 看 KPI 总览，或按 N 打开 Speaker Notes。", "Press / to search, D for the KPI dashboard, or N for Speaker Notes."),
+      pickUiText("靠近终端后按 E 会进入当前场景。", "Move near a terminal and press E to open the current scene."),
+      pickUiText("右侧小地图和路线卡仍然可以快速跳转。", "The minimap and route panel still support quick jumps."),
+    ],
+    timerText,
+  };
+}
+
+function getNarrationText(): string | null {
+  if (modal.classList.contains("hidden")) {
+    return null;
+  }
+
+  const currentScene = getPresenterCurrentSceneSummary();
+  const segments = [currentScene.title, currentScene.subtitle, ...currentScene.points]
+    .map((segment) => segment.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (segments.length === 0) {
+    return null;
+  }
+
+  return currentUiLanguage === "en"
+    ? `${segments.join(". ")}.`
+    : `${segments.join("。")}。`;
+}
+
+function stopSpeechNarration(announce = false): void {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+  speechNarrationState.active = false;
+  speechNarrationState.utterance = null;
+  if (announce) {
+    showToast(
+      pickUiText("已停止语音播报。", "Speech narration stopped.")
+    );
+  }
+}
+
+function toggleSpeechNarration(): void {
+  if (typeof window === "undefined" || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+    showToast(
+      pickUiText("当前浏览器不支持语音播报。", "This browser does not support speech narration.")
+    );
+    return;
+  }
+
+  if (speechNarrationState.active) {
+    stopSpeechNarration(true);
+    return;
+  }
+
+  const narrationText = getNarrationText();
+  if (!narrationText) {
+    showToast(
+      pickUiText("先打开一个场景卡，再按 S 朗读当前内容。", "Open a scene card first, then press S to narrate it.")
+    );
+    return;
+  }
+
+  const utterance = new SpeechSynthesisUtterance(narrationText);
+  utterance.lang = currentUiLanguage === "en" ? "en-AU" : "zh-CN";
+  utterance.rate = currentUiLanguage === "en" ? 1 : 1.02;
+  utterance.pitch = 1;
+  utterance.onend = () => {
+    speechNarrationState.active = false;
+    speechNarrationState.utterance = null;
+  };
+  utterance.onerror = () => {
+    speechNarrationState.active = false;
+    speechNarrationState.utterance = null;
+    showToast(
+      pickUiText("语音播报启动失败。", "Speech narration failed to start.")
+    );
+  };
+
+  window.speechSynthesis.cancel();
+  speechNarrationState.active = true;
+  speechNarrationState.utterance = utterance;
+  window.speechSynthesis.speak(utterance);
+  showToast(
+    pickUiText("开始朗读当前场景，按 S 可停止。", "Narrating the current scene. Press S again to stop.")
+  );
+}
+
+function getPresenterNextRecommendation(): {
+  title: string;
+  detail: string;
+  etaMinutes: number;
+} {
+  const target = getNavigationFollowUpTarget() ?? getNavigationTarget() ?? getStrategicNavigationTarget();
+  if (!target) {
+    return {
+      title: getLocalizedString("speaker.nextIdle"),
+      detail: pickUiText("当前没有硬性目标，可按问题现场切场景。", "There is no hard target right now, so you can route by audience questions."),
+      etaMinutes: 1,
+    };
+  }
+
+  switch (target.type) {
+    case "guide":
+      return target.value.target.type === "department"
+        ? {
+            title: `${target.value.target.department.shortName} · ${pickUiText("部门导览", "Dept Guide")}`,
+            detail: getDepartmentPendingWorkSummary(target.value.target.department),
+            etaMinutes: 1,
+          }
+        : {
+            title: getSharedZoneUiLabel(target.value.target.zone),
+            detail: target.value.preview,
+            etaMinutes: 1,
+          };
+    case "terminal":
+      if (target.value.kind === "scenario") {
+        return {
+          title: `${target.value.department.shortName} · ${target.value.scenario.title}`,
+          detail: target.value.scenario.hook,
+          etaMinutes: getScenarioTalkEstimateMinutes(target.value.scenario),
+        };
+      }
+      return {
+        title: `${target.value.department.shortName} · ${target.value.label}`,
+        detail: pickUiText("外部终端入口", "External terminal gate"),
+        etaMinutes: 1,
+      };
+    case "insight":
+      return {
+        title: `${target.value.department.shortName} · ${pickUiText("洞察芯片", "Insight Chip")}`,
+        detail: target.value.fact,
+        etaMinutes: 1,
+      };
+    case "podium":
+      return {
+        title: pickUiText("中央演讲台", "Central Podium"),
+        detail: meetingState.active
+          ? pickUiText("会议正在进行，可直接继续讲。", "The meeting is live and ready to narrate.")
+          : pickUiText("适合作为节奏切换点。", "A good beat change for the talk."),
+        etaMinutes: 1,
+      };
+    case "exit":
+      return {
+        title: getOfficeExitLabel(),
+        detail: pickUiText("收尾并切到 thank-you 页面。", "Wrap up and switch to the thank-you page."),
+        etaMinutes: 1,
+      };
+  }
+}
+
+function updatePresenterBrief(): void {
+  const currentScene = getPresenterCurrentSceneSummary();
+  const nextRecommendation = getPresenterNextRecommendation();
+  presenterCurrentScene.textContent = currentScene.title;
+  presenterCurrentScene.title = currentScene.subtitle;
+  presenterSceneTimer.textContent = currentScene.timerText;
+  presenterNextTarget.textContent = `${nextRecommendation.title} · ${getLocalizedString("speaker.nextEtaPrefix")}${nextRecommendation.etaMinutes}${getLocalizedString("speaker.nextEtaSuffix")}`;
+  presenterNextTarget.title = nextRecommendation.detail;
+  helpRescueContent.innerHTML = translateRuntimeMarkup(`
+    <div class="help-rescue-summary">
+      <div class="help-rescue-summary__section">
+        <div class="metric-label">${getLocalizedString("help.rescueCurrent")}</div>
+        <strong>${currentScene.title}</strong>
+        <p>${currentScene.subtitle}</p>
+        <ul>
+          ${currentScene.points.slice(0, 3).map((point) => `<li>${point}</li>`).join("")}
+        </ul>
+      </div>
+      <div class="help-rescue-summary__section">
+        <div class="metric-label">${getLocalizedString("help.rescueNext")}</div>
+        <strong>${nextRecommendation.title}</strong>
+        <p>${nextRecommendation.detail}</p>
+        <div class="help-rescue-summary__eta">${getLocalizedString("speaker.nextEtaPrefix")}${nextRecommendation.etaMinutes}${getLocalizedString("speaker.nextEtaSuffix")}</div>
+      </div>
+    </div>
+  `);
+}
+
+function buildSpeakerNotesWindowMarkup(): string {
+  const currentScene = getPresenterCurrentSceneSummary();
+  const nextRecommendation = getPresenterNextRecommendation();
+  return `<!doctype html>
+<html lang="${currentUiLanguage}">
+  <head>
+    <meta charset="utf-8" />
+    <title>${getLocalizedString("speaker.notesWindowTitle")}</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, "PingFang SC", sans-serif; }
+      body { margin: 0; padding: 18px; background: #111522; color: #f5f7ff; }
+      .wrap { display: grid; gap: 14px; }
+      .card { border: 1px solid rgba(130,154,221,.24); border-radius: 18px; padding: 16px; background: rgba(18,24,44,.88); box-shadow: 0 16px 36px rgba(0,0,0,.24); }
+      .eyebrow { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #ffb703; margin-bottom: 8px; }
+      h1, h2, p { margin: 0; }
+      h1 { font-size: 28px; line-height: 1.1; }
+      .sub { color: #d8e4f8; line-height: 1.55; margin-top: 8px; font-size: 14px; }
+      ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; color: #edf4ff; line-height: 1.55; }
+      .meta { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .pill { min-height: 44px; border-radius: 14px; border: 1px solid rgba(130,154,221,.22); padding: 10px 12px; background: rgba(12,17,33,.8); }
+      .pill strong { display: block; color: #ffcf47; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 6px; }
+      .pill span { display: block; color: #f5f7ff; font-size: 16px; line-height: 1.35; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section class="card">
+        <div class="eyebrow">${getLocalizedString("speaker.noteCurrent")}</div>
+        <h1>${currentScene.title}</h1>
+        <p class="sub">${currentScene.subtitle}</p>
+      </section>
+      <section class="card">
+        <div class="eyebrow">${getLocalizedString("speaker.noteKeyPoints")}</div>
+        <ul>${currentScene.points.map((point) => `<li>${point}</li>`).join("")}</ul>
+      </section>
+      <section class="meta">
+        <div class="pill">
+          <strong>${getLocalizedString("speaker.noteTimer")}</strong>
+          <span>${currentScene.timerText}</span>
+        </div>
+        <div class="pill">
+          <strong>${getLocalizedString("speaker.noteNext")}</strong>
+          <span>${nextRecommendation.title}<br />${getLocalizedString("speaker.nextEtaPrefix")}${nextRecommendation.etaMinutes}${getLocalizedString("speaker.nextEtaSuffix")}</span>
+        </div>
+      </section>
+      <section class="card">
+        <div class="eyebrow">${getLocalizedString("speaker.noteStatus")}</div>
+        <p class="sub">${nextRecommendation.detail}</p>
+      </section>
+    </div>
+  </body>
+</html>`;
+}
+
+function renderSpeakerNotesWindow(): void {
+  if (!speakerNotesWindow || speakerNotesWindow.closed) {
+    speakerNotesWindow = null;
+    return;
+  }
+
+  speakerNotesWindow.document.open();
+  speakerNotesWindow.document.write(buildSpeakerNotesWindowMarkup());
+  speakerNotesWindow.document.close();
+}
+
+function openSpeakerNotesWindow(): void {
+  if (isTitleScreenActive()) {
+    return;
+  }
+
+  const notesWindow = speakerNotesWindow && !speakerNotesWindow.closed
+    ? speakerNotesWindow
+    : window.open("", "openclaw-speaker-notes", "popup=yes,width=440,height=760,left=120,top=80,resizable=yes,scrollbars=yes");
+
+  if (!notesWindow) {
+    showToast(getLocalizedString("speaker.notesBlocked"));
+    return;
+  }
+
+  speakerNotesWindow = notesWindow;
+  renderSpeakerNotesWindow();
+  notesWindow.focus();
+}
+
+function closeSearchOverlay(): void {
+  if (!searchOverlayState.active) {
+    return;
+  }
+  searchOverlayState.active = false;
+  syncSearchOverlayUi();
+  searchInput.blur();
+}
+
+function normalizeSearchText(text: string): string {
+  return text.toLowerCase().normalize("NFKC");
+}
+
+function buildSearchResults(query: string): SearchResult[] {
+  const normalizedQuery = normalizeSearchText(query.trim());
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  const results: SearchResult[] = [];
+
+  departments.forEach((department) => {
+    const departmentSearchText = normalizeSearchText(
+      [department.shortName, department.name, department.intro, department.speakerNote, ...department.npcRoles].join(" ")
+    );
+    const departmentTokenHits = tokens.filter((token) => departmentSearchText.includes(token)).length;
+    if (departmentTokenHits > 0) {
+      results.push({
+        key: `department:${department.id}`,
+        kind: "department",
+        title: getDepartmentUiLabel(department),
+        subtitle: pickUiText("部门", "Department"),
+        detail: department.intro,
+        score: departmentTokenHits * 24 + (departmentSearchText.includes(normalizedQuery) ? 30 : 0),
+        department,
+      });
+    }
+
+    department.scenarios.forEach((scenario) => {
+      const scenarioSearchText = normalizeSearchText(
+        [
+          department.shortName,
+          department.name,
+          scenario.title,
+          scenario.hook,
+          scenario.problem,
+          scenario.workflow.join(" "),
+          scenario.outputs.join(" "),
+          scenario.kpis.join(" "),
+          scenario.stat,
+          scenario.demoResult,
+          scenario.source.label,
+          scenario.source.detail,
+        ].join(" ")
+      );
+      const scenarioTokenHits = tokens.filter((token) => scenarioSearchText.includes(token)).length;
+      if (scenarioTokenHits === 0) {
+        return;
+      }
+
+      results.push({
+        key: `scenario:${scenario.id}`,
+        kind: "scenario",
+        title: scenario.title,
+        subtitle: getDepartmentUiLabel(department),
+        detail: scenario.hook,
+        score:
+          scenarioTokenHits * 36 +
+          (scenarioSearchText.includes(normalizedQuery) ? 40 : 0) +
+          (completedScenarios.has(scenario.id) ? 0 : 8) +
+          scenario.impactScore,
+        department,
+        scenario,
+      });
+    });
+  });
+
+  sharedZones.forEach((zone) => {
+    const copy = getSharedZoneModalCopy(zone);
+    const zoneSearchText = normalizeSearchText(
+      [zone.label, copy.title, copy.intro, copy.highlight, ...copy.cards.map((card) => `${card.title} ${card.hook} ${card.bullets.join(" ")}`)].join(" ")
+    );
+    const zoneTokenHits = tokens.filter((token) => zoneSearchText.includes(token)).length;
+    if (zoneTokenHits === 0) {
+      return;
+    }
+
+    results.push({
+      key: `shared-zone:${zone.id}`,
+      kind: "shared-zone",
+      title: getSharedZoneUiLabel(zone),
+      subtitle: pickUiText("公共区", "Shared Zone"),
+      detail: copy.highlight,
+      score: zoneTokenHits * 20 + (zoneSearchText.includes(normalizedQuery) ? 28 : 0),
+      zone,
+    });
+  });
+
+  return results
+    .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
+    .slice(0, 12);
+}
+
+function renderSearchResults(): void {
+  const query = searchInput.value.trim();
+  searchOverlayState.results = buildSearchResults(query);
+
+  if (!query) {
+    searchResults.innerHTML = `<div class="search-overlay__empty">${getLocalizedString("search.defaultHint")}</div>`;
+    return;
+  }
+
+  if (searchOverlayState.results.length === 0) {
+    searchResults.innerHTML = `<div class="search-overlay__empty">${getLocalizedString("search.empty")}</div>`;
+    return;
+  }
+
+  searchResults.innerHTML = searchOverlayState.results.map((result) => `
+    <button class="search-result" type="button" data-search-result="${result.key}">
+      <span class="search-result__meta">${getLocalizedString(`search.result${result.kind === "shared-zone" ? "SharedZone" : result.kind === "department" ? "Department" : "Scenario"}`)}</span>
+      <strong>${result.title}</strong>
+      <span class="search-result__subtitle">${result.subtitle}</span>
+      <span class="search-result__detail">${result.detail}</span>
+    </button>
+  `).join("");
+}
+
+function openSearchOverlay(): void {
+  if (isTitleScreenActive()) {
+    return;
+  }
+
+  keys.clear();
+  touchControls.clear();
+  clearMobileMoveTarget();
+  dashboardOverlayState.active = false;
+  syncDashboardOverlayUi();
+  searchOverlayState.active = true;
+  searchInput.value = "";
+  syncSearchOverlayUi();
+  renderSearchResults();
+  searchInput.focus();
+}
+
+function closeDashboardOverlay(): void {
+  if (!dashboardOverlayState.active) {
+    return;
+  }
+  dashboardOverlayState.active = false;
+  syncDashboardOverlayUi();
+}
+
+function renderDashboardOverlay(): void {
+  const totalImpact = allScenarios
+    .filter((scenario) => completedScenarios.has(scenario.id))
+    .reduce((sum, scenario) => sum + scenario.impactScore, 0);
+  const completedDepartments = getCompletedDepartmentCount();
+
+  dashboardSummary.innerHTML = `
+    <div class="dashboard-summary-card">
+      <span>${getLocalizedString("dashboardPanel.completed")}</span>
+      <strong>${formatLocalizedNumber(completedScenarios.size)}/${formatLocalizedNumber(allScenarios.length)}</strong>
+    </div>
+    <div class="dashboard-summary-card">
+      <span>${getLocalizedString("dashboardPanel.impact")}</span>
+      <strong>${formatLocalizedNumber(totalImpact)}</strong>
+    </div>
+    <div class="dashboard-summary-card">
+      <span>${getLocalizedString("dashboardPanel.insights")}</span>
+      <strong>${formatLocalizedNumber(collectedInsights.size)}</strong>
+    </div>
+    <div class="dashboard-summary-card">
+      <span>${getLocalizedString("dashboardPanel.departments")}</span>
+      <strong>${formatLocalizedNumber(completedDepartments)}/${formatLocalizedNumber(departments.length)}</strong>
+    </div>
+  `;
+
+  const rows = [...departments]
+    .flatMap((department) =>
+      department.scenarios.map((scenario) => ({ department, scenario }))
+    )
+    .sort((left, right) =>
+      Number(completedScenarios.has(right.scenario.id)) - Number(completedScenarios.has(left.scenario.id)) ||
+      right.scenario.impactScore - left.scenario.impactScore
+    );
+
+  dashboardResults.innerHTML = rows.map(({ department, scenario }) => {
+    const domain = getScenarioSourceDomain(scenario.source.url);
+    const favoriteLabel = isScenarioFavorited(scenario.id)
+      ? getLocalizedString("favorites.remove")
+      : getLocalizedString("favorites.add");
+    return `
+      <article class="dashboard-row ${completedScenarios.has(scenario.id) ? "is-done" : ""}">
+        <div class="dashboard-row__main">
+          <div class="dashboard-row__meta">${getDepartmentUiLabel(department)} · ${domain}</div>
+          <h3>${scenario.title}</h3>
+          <p>${scenario.hook}</p>
+          <div class="dashboard-row__stat"><strong>${getLocalizedString("dashboardPanel.statLabel")}</strong><span>${renderScenarioStatMarkup(scenario.stat)}</span></div>
+          ${renderImpactMeterMarkup(scenario.impactScore)}
+          <div class="dashboard-row__footer">${escapeHtml(scenario.source.label)}</div>
+        </div>
+        <div class="dashboard-row__actions">
+          <button type="button" class="ghost-button" data-dashboard-scenario="${scenario.id}">
+            ${getLocalizedString("dashboardPanel.open")}
+          </button>
+          <button
+            type="button"
+            class="bookmark-button ${isScenarioFavorited(scenario.id) ? "is-active" : ""}"
+            data-toggle-favorite="${scenario.id}"
+            aria-pressed="${String(isScenarioFavorited(scenario.id))}"
+          >
+            ${favoriteLabel}
+          </button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function openDashboardOverlay(): void {
+  if (isTitleScreenActive()) {
+    return;
+  }
+
+  keys.clear();
+  touchControls.clear();
+  clearMobileMoveTarget();
+  closeSearchOverlay();
+  dashboardOverlayState.active = true;
+  syncDashboardOverlayUi();
+  renderDashboardOverlay();
+  dashboardCloseButton.focus();
+}
+
+function activateSearchResult(result: SearchResult): void {
+  closeSearchOverlay();
+  if (result.kind === "scenario" && result.department && result.scenario) {
+    teleportToDepartment(result.department);
+    openDepartmentModal(result.department, result.scenario.id);
+    return;
+  }
+  if (result.kind === "department" && result.department) {
+    teleportToDepartment(result.department);
+    openDepartmentModal(result.department);
+    return;
+  }
+  if (result.kind === "shared-zone" && result.zone) {
+    teleportToSharedZone(result.zone);
+    openSharedZoneModal(result.zone);
+  }
+}
+
+function activateDashboardScenario(scenarioId: string): void {
+  const department = departments.find((item) => item.scenarios.some((scenario) => scenario.id === scenarioId)) ?? null;
+  if (!department) {
+    return;
+  }
+  closeDashboardOverlay();
+  teleportToDepartment(department);
+  openDepartmentModal(department, scenarioId);
+}
+
+function buildPersistedOfficeState(): PersistedOfficeState {
+  return {
+    version: 1,
+    language: currentUiLanguage,
+    enteredOffice: !titleScreenState.active,
+    player: {
+      x: Math.round(player.x),
+      y: Math.round(player.y),
+      facing: player.facing,
+    },
+    completedScenarioIds: Array.from(completedScenarios),
+    collectedInsightIds: Array.from(collectedInsights),
+    completedSharedZoneIds: Array.from(completedSharedZones),
+    uiMinimal,
+    presenterCountdownStartedAt: presenterCountdownState.startedAt,
+  };
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isPersistedOfficeState(value: unknown): value is PersistedOfficeState {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<PersistedOfficeState> & {
+    player?: Partial<PersistedOfficeState["player"]>;
+  };
+  return (
+    candidate.version === 1 &&
+    (candidate.language === "zh-CN" || candidate.language === "en") &&
+    typeof candidate.enteredOffice === "boolean" &&
+    !!candidate.player &&
+    isFiniteNumber(candidate.player.x) &&
+    isFiniteNumber(candidate.player.y) &&
+    isFiniteNumber(candidate.player.facing) &&
+    isStringArray(candidate.completedScenarioIds) &&
+    isStringArray(candidate.collectedInsightIds) &&
+    (candidate.completedSharedZoneIds === undefined || isStringArray(candidate.completedSharedZoneIds)) &&
+    typeof candidate.uiMinimal === "boolean" &&
+    (candidate.presenterCountdownStartedAt === null || isFiniteNumber(candidate.presenterCountdownStartedAt))
+  );
+}
+
+function persistOfficeState(): void {
+  writeStorage(UI_LANGUAGE_STORAGE_KEY, currentUiLanguage);
+  writeStorage(OFFICE_STATE_STORAGE_KEY, JSON.stringify(buildPersistedOfficeState()));
+  persistFavoriteScenarios();
+}
+
+function persistFavoriteScenarios(): void {
+  writeStorage(FAVORITES_STORAGE_KEY, JSON.stringify(Array.from(favoriteScenarios)));
+}
+
+function restoreFavoriteScenarios(): void {
+  favoriteScenarios.clear();
+  const raw = readStorage(FAVORITES_STORAGE_KEY);
+  if (!raw) {
+    return;
+  }
+
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    removeStorage(FAVORITES_STORAGE_KEY);
+    return;
+  }
+
+  if (!isStringArray(parsed)) {
+    removeStorage(FAVORITES_STORAGE_KEY);
+    return;
+  }
+
+  const validScenarioIds = new Set(allScenarios.map((scenario) => scenario.id));
+  parsed.forEach((scenarioId) => {
+    if (validScenarioIds.has(scenarioId)) {
+      favoriteScenarios.add(scenarioId);
+    }
+  });
+}
+
+function restorePersistedOfficeState(): void {
+  const storedLanguage = readStoredLanguage();
+  currentUiLanguage = storedLanguage;
+  baseDepartments = dataCatalogByLanguage[currentUiLanguage].departments;
+  currentThesisPoints = dataCatalogByLanguage[currentUiLanguage].thesisPoints;
+  currentUniqueSources = dataCatalogByLanguage[currentUiLanguage].uniqueSources;
+
+  if (storedLanguage !== "zh-CN") {
+    titleScreenState.phase = "intro";
+  }
+
+  const raw = readStorage(OFFICE_STATE_STORAGE_KEY);
+  if (!raw) {
+    removeStorage(EMERGENCY_RETURN_STORAGE_KEY);
+    return;
+  }
+
+  let parsed: PersistedOfficeState | null = null;
+  try {
+    parsed = JSON.parse(raw) as PersistedOfficeState;
+  } catch {
+    removeStorage(OFFICE_STATE_STORAGE_KEY);
+    removeStorage(EMERGENCY_RETURN_STORAGE_KEY);
+    return;
+  }
+
+  if (!isPersistedOfficeState(parsed)) {
+    removeStorage(OFFICE_STATE_STORAGE_KEY);
+    removeStorage(EMERGENCY_RETURN_STORAGE_KEY);
+    return;
+  }
+
+  currentUiLanguage = parsed.language === "en" ? "en" : "zh-CN";
+  baseDepartments = dataCatalogByLanguage[currentUiLanguage].departments;
+  currentThesisPoints = dataCatalogByLanguage[currentUiLanguage].thesisPoints;
+  currentUniqueSources = dataCatalogByLanguage[currentUiLanguage].uniqueSources;
+  writeStorage(UI_LANGUAGE_STORAGE_KEY, currentUiLanguage);
+
+  completedScenarios.clear();
+  const validScenarioIds = new Set(allScenarios.map((scenario) => scenario.id));
+  parsed.completedScenarioIds.forEach((scenarioId) => {
+    if (validScenarioIds.has(scenarioId)) {
+      completedScenarios.add(scenarioId);
+    }
+  });
+
+  collectedInsights.clear();
+  const validInsightIds = new Set(insightNodes.map((node) => node.id));
+  parsed.collectedInsightIds.forEach((insightId) => {
+    if (validInsightIds.has(insightId)) {
+      collectedInsights.add(insightId);
+    }
+  });
+
+  completedSharedZones.clear();
+  const validSharedZoneIds = new Set(sharedZones.map((zone) => zone.id));
+  (parsed.completedSharedZoneIds ?? []).forEach((zoneId) => {
+    if (validSharedZoneIds.has(zoneId)) {
+      completedSharedZones.add(zoneId);
+    }
+  });
+
+  if (
+    Number.isFinite(parsed.player.x) &&
+    Number.isFinite(parsed.player.y) &&
+    canStandAt(parsed.player.x, parsed.player.y)
+  ) {
+    player.x = parsed.player.x;
+    player.y = parsed.player.y;
+  }
+  if (Number.isFinite(parsed.player.facing)) {
+    player.facing = parsed.player.facing;
+  }
+
+  camera.x = player.x;
+  camera.y = player.y - 4;
+  uiMinimal = Boolean(parsed.uiMinimal);
+  presenterCountdownState.startedAt = typeof parsed.presenterCountdownStartedAt === "number"
+    ? parsed.presenterCountdownStartedAt
+    : null;
+  primePresenterMilestones();
+
+  const emergencyReturn = readStorage(EMERGENCY_RETURN_STORAGE_KEY) === "1";
+  removeStorage(EMERGENCY_RETURN_STORAGE_KEY);
+  if (parsed.enteredOffice && !emergencyReturn) {
+    titleScreenState.active = false;
+    titleScreenState.phase = "intro";
+  } else {
+    titleScreenState.active = true;
+    titleScreenState.phase = "intro";
+  }
+}
+
+function emergencyReturnToStartScreen(): void {
+  if (appBootstrapComplete) {
+    persistOfficeState();
+  }
+  writeStorage(EMERGENCY_RETURN_STORAGE_KEY, "1");
+  window.location.reload();
+}
+
+function autosaveOfficeState(): void {
+  persistOfficeState();
+  showAutosaveIndicator();
 }
 
 function assertNever(value: never, label: string): never {
@@ -1283,9 +3036,11 @@ function preparePlayerSpriteSheet(sourceUrl: string): void {
   const image = new Image();
   image.addEventListener("load", () => {
     playerSpriteSheetState.sheet = buildPlayerSpriteSheet(image);
+    markStartupAssetReady();
   });
   image.addEventListener("error", () => {
     console.warn("主角精灵图加载失败，继续使用默认主角绘制。");
+    markStartupAssetReady();
   });
   image.src = sourceUrl;
 }
@@ -1294,9 +3049,11 @@ function prepareLobsterSpriteSheet(sourceUrl: string): void {
   const image = new Image();
   image.addEventListener("load", () => {
     lobsterSpriteSheetState.sheet = buildLobsterSpriteSheet(image);
+    markStartupAssetReady();
   });
   image.addEventListener("error", () => {
     console.warn("小龙虾精灵图加载失败，继续使用默认小龙虾绘制。");
+    markStartupAssetReady();
   });
   image.src = sourceUrl;
 }
@@ -1305,9 +3062,11 @@ function prepareSceneLayer(layerKey: keyof SceneLayerState, sourceUrl: string): 
   const image = new Image();
   image.addEventListener("load", () => {
     sceneLayerState[layerKey] = image;
+    markStartupAssetReady();
   });
   image.addEventListener("error", () => {
     console.warn(`场景图层加载失败：${layerKey}`);
+    markStartupAssetReady();
   });
   image.src = sourceUrl;
 }
@@ -1430,6 +3189,32 @@ function buildPlayerSpriteSheet(image: HTMLImageElement): PreparedPlayerSpriteSh
 }
 
 function buildLobsterSpriteSheet(image: HTMLImageElement): PreparedPlayerSpriteSheet {
+  if (
+    image.width === LOBSTER_SPRITE_FRAME_SIZE * LOBSTER_SPRITE_FACING_ORDER.length &&
+    image.height === LOBSTER_SPRITE_FRAME_SIZE
+  ) {
+    const canvasElement = document.createElement("canvas");
+    canvasElement.width = image.width;
+    canvasElement.height = image.height;
+    const context = requireCanvasContext(canvasElement, "小龙虾精灵", true);
+    context.drawImage(image, 0, 0);
+
+    const frames = {} as Record<PlayerSpriteFacing, Rect>;
+    LOBSTER_SPRITE_FACING_ORDER.forEach((facing, index) => {
+      frames[facing] = {
+        left: index * LOBSTER_SPRITE_FRAME_SIZE,
+        top: 0,
+        width: LOBSTER_SPRITE_FRAME_SIZE,
+        height: LOBSTER_SPRITE_FRAME_SIZE,
+      };
+    });
+
+    return {
+      canvas: canvasElement,
+      frames,
+    };
+  }
+
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = image.width;
   sourceCanvas.height = image.height;
@@ -2305,7 +4090,7 @@ const officeExitPortal: OfficeExitPortal = {
     width: 72,
     height: 88,
   },
-  accent: "#f4cf7d",
+  accent: "#ffb703",
 };
 
 const officeProps: OfficeProp[] = [
@@ -3334,6 +5119,7 @@ const keys = new Set<string>();
 const touchControls = new Set<ControlKey>();
 const completedScenarios = new Set<string>();
 const collectedInsights = new Set<string>();
+const completedSharedZones = new Set<string>();
 const bubbleLexiconByLanguage: Record<UiLanguage, string[]> = {
   "zh-CN": [
     "这周的周报格式又改了。",
@@ -3409,7 +5195,30 @@ const npcGivenNamePool = [
   "亦凡",
 ];
 
-function createNpcName(seed: number): string {
+const npcCustomNamesById: Record<string, string> = {
+  "marketing-npc-0": "Dora",
+  "marketing-npc-1": "LT",
+  "marketing-npc-2": "Ivy",
+  "sales-npc-0": "马老板",
+  "sales-npc-1": "Nicole",
+  "sales-npc-2": "Rita",
+  "development-npc-0": "Cici",
+  "development-npc-1": "Michelle",
+  "development-npc-2": "Zhu",
+  "production-npc-0": "吴同学",
+  "production-npc-1": "叶子",
+  "production-npc-2": "林队",
+  "quality-npc-0": "AlexL",
+};
+
+function createNpcName(seed: number, npcId?: string): string {
+  if (npcId) {
+    const customName = npcCustomNamesById[npcId];
+    if (customName) {
+      return customName;
+    }
+  }
+
   const surname = npcSurnamePool[seed % npcSurnamePool.length] ?? "林";
   const givenName = npcGivenNamePool[(seed * 3 + 5) % npcGivenNamePool.length] ?? "知行";
   return `${surname}${givenName}`;
@@ -3436,6 +5245,39 @@ const player: PlayerState = {
   y: initialSpawn.y,
   facing: 0,
   step: 0,
+  idleTime: 0,
+};
+
+const receptionGuide = areaGuides.find(
+  (guide) => guide.target.type === "shared-zone" && guide.target.zone.id === "reception"
+);
+const introCinematicState: IntroCinematicState = {
+  active: false,
+  time: 0,
+  duration: INTRO_CINEMATIC_DURATION,
+  heroStart: resolveTapMoveTarget({
+    x: corridorRect.left + 10,
+    y: corridorRect.top + corridorRect.height - 34,
+  }) ?? { x: corridorRect.left + 10, y: corridorRect.top + corridorRect.height - 34 },
+  heroEnd: initialSpawn,
+  guidePoint: receptionGuide?.position ?? rectCenter(receptionZone.walkwayRect),
+  overviewFocus: {
+    x: officeRect.left + officeRect.width / 2,
+    y: officeRect.top + officeRect.height / 2 + 18,
+  },
+  receptionFocus: receptionGuide
+    ? {
+        x: receptionGuide.position.x + 12,
+        y: receptionGuide.position.y + 18,
+      }
+    : rectCenter(receptionZone.roomRect),
+};
+const lobsterCompanionState: LobsterCompanionState = {
+  message: "",
+  visibleTimer: 0,
+  cooldown: 2.8,
+  facing: Math.PI,
+  accent: "#ffb703",
 };
 
 const introPromoRugRect: Rect = {
@@ -3473,8 +5315,11 @@ let hoveredPodium: MeetingPodium | null = null;
 let hoveredExit: OfficeExitPortal | null = null;
 let modalDepartment: SceneDepartment | null = null;
 let modalSharedZone: SharedZone | null = null;
-let uiMinimal = true;
+let uiMinimal = false;
 let toastTimer: number | null = null;
+let modalTimer: number | null = null;
+let modalOpenFrame: number | null = null;
+let interactionFlashTimer: number | null = null;
 let isDragging = false;
 let lastPointerX = 0;
 let lastPointerY = 0;
@@ -3490,9 +5335,77 @@ let lastPromptKey = "";
 let lastRouteListRenderKey = "";
 let lastHudStatusKey = "";
 let officeFlowClock = 0;
+let currentThesisPointIndex = 0;
 const thankYouScreenState = {
   active: false,
 };
+const onboardingState = {
+  visible: false,
+  timer: null as number | null,
+};
+const startupLoadState = {
+  total: 4,
+  loaded: 0,
+  ready: false,
+};
+const helpOverlayState = {
+  active: false,
+};
+const searchOverlayState = {
+  active: false,
+  results: [] as SearchResult[],
+};
+const dashboardOverlayState = {
+  active: false,
+};
+const crashRecoveryState = {
+  active: false,
+};
+const routeErrorState = {
+  active: false,
+  path: "",
+};
+const favoriteScenarios = new Set<string>();
+let appBootstrapComplete = false;
+const debugHudState = {
+  enabled: DEBUG_MODE,
+  fps: 0,
+  frameCount: 0,
+  frameSampleStartedAt: performance.now(),
+  longTaskCount: 0,
+  lastLongTaskMs: 0,
+  observer: null as PerformanceObserver | null,
+};
+const networkState = {
+  offline: typeof navigator !== "undefined" ? !navigator.onLine : false,
+};
+const presenterCountdownState = {
+  startedAt: null as number | null,
+};
+const presenterMilestonesShown = new Set<string>();
+const presenterSceneState = {
+  key: "",
+  scenarioId: "",
+  departmentId: "",
+  zoneId: "",
+  startedAt: null as number | null,
+};
+const speechNarrationState = {
+  active: false,
+  utterance: null as SpeechSynthesisUtterance | null,
+};
+const gamepadState = {
+  leftX: 0,
+  leftY: 0,
+  buttonA: false,
+  buttonB: false,
+};
+const konamiState = {
+  index: 0,
+  activeUntil: 0,
+};
+let speakerNotesWindow: Window | null = null;
+let autosaveIndicatorTimer: number | null = null;
 const titleScreenState: {
   active: boolean;
   phase: TitleScreenPhase;
@@ -3502,8 +5415,8 @@ const titleScreenState: {
   active: true,
   phase: "language",
   hero: {
-    position: { x: 120, y: 168 },
-    target: { x: 120, y: 168 },
+    position: { x: 72, y: 174 },
+    target: { x: 72, y: 174 },
     facing: 0,
     speed: 26,
     retargetTimer: 0,
@@ -3548,7 +5461,7 @@ const goalRelayState: GoalRelayState = {
 const departmentMilestoneState: DepartmentMilestoneState = {
   pulse: 0,
   departmentId: "",
-  accent: "#8be08c",
+  accent: "#ffcf47",
   title: "",
   detail: "",
   completedScenarios: 0,
@@ -3608,42 +5521,96 @@ function rectsOverlap(a: Rect, b: Rect, padding = 6): boolean {
   );
 }
 
+function buildOverlayHorizontalOffsets(step: number, attempts: number): number[] {
+  if (step <= 0 || attempts <= 0) {
+    return [0];
+  }
+
+  const offsets = [0];
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    offsets.push(-attempt * step, attempt * step);
+  }
+  return offsets;
+}
+
 function resolveOverlayPlacement(
   preferredRect: Rect,
   reservedRects: Rect[],
   margin: number,
   verticalStep = 10,
   upwardAttempts = 10,
-  downwardAttempts = 6
+  downwardAttempts = 6,
+  horizontalStep = 0,
+  horizontalAttempts = 0,
+  topSafeArea = margin
 ): Rect {
-  const left = clamp(preferredRect.left, margin, canvas.width - preferredRect.width - margin);
-  const minTop = margin;
-  const maxTop = Math.max(margin, canvas.height - preferredRect.height - margin);
-  const topCandidates: number[] = [];
+  const minLeft = margin;
+  const maxLeft = Math.max(minLeft, canvas.width - preferredRect.width - margin);
+  const minTop = Math.max(margin, topSafeArea);
+  const maxTop = Math.max(minTop, canvas.height - preferredRect.height - margin);
+  const topCandidates: number[] = [clamp(preferredRect.top, minTop, maxTop)];
+  const horizontalOffsets = buildOverlayHorizontalOffsets(horizontalStep, horizontalAttempts);
+  const preferDownward = preferredRect.top <= minTop + verticalStep * 1.5;
+  const totalAttempts = Math.max(upwardAttempts, downwardAttempts);
+  let fallback: Rect | null = null;
+  let fallbackScore = Number.POSITIVE_INFINITY;
 
-  for (let attempt = 0; attempt <= upwardAttempts; attempt += 1) {
-    topCandidates.push(clamp(preferredRect.top - attempt * verticalStep, minTop, maxTop));
-  }
-  for (let attempt = 1; attempt <= downwardAttempts; attempt += 1) {
-    topCandidates.push(clamp(preferredRect.top + attempt * verticalStep, minTop, maxTop));
-  }
+  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+    if (preferDownward) {
+      if (attempt <= downwardAttempts) {
+        topCandidates.push(clamp(preferredRect.top + attempt * verticalStep, minTop, maxTop));
+      }
+      if (attempt <= upwardAttempts) {
+        topCandidates.push(clamp(preferredRect.top - attempt * verticalStep, minTop, maxTop));
+      }
+      continue;
+    }
 
-  for (const top of topCandidates) {
-    const candidate = { left, top, width: preferredRect.width, height: preferredRect.height };
-    if (!reservedRects.some((rect) => rectsOverlap(candidate, rect))) {
-      reservedRects.push(candidate);
-      return candidate;
+    if (attempt <= upwardAttempts) {
+      topCandidates.push(clamp(preferredRect.top - attempt * verticalStep, minTop, maxTop));
+    }
+    if (attempt <= downwardAttempts) {
+      topCandidates.push(clamp(preferredRect.top + attempt * verticalStep, minTop, maxTop));
     }
   }
 
-  const fallback = {
-    left,
+  for (const top of topCandidates) {
+    for (const horizontalOffset of horizontalOffsets) {
+      const candidate = {
+        left: clamp(preferredRect.left + horizontalOffset, minLeft, maxLeft),
+        top,
+        width: preferredRect.width,
+        height: preferredRect.height,
+      };
+      const overlapCount = reservedRects.reduce(
+        (count, rect) => count + (rectsOverlap(candidate, rect) ? 1 : 0),
+        0
+      );
+
+      if (overlapCount === 0) {
+        reservedRects.push(candidate);
+        return candidate;
+      }
+
+      const score =
+        overlapCount * 10_000 +
+        Math.abs(top - preferredRect.top) * 2 +
+        Math.abs(horizontalOffset);
+      if (score < fallbackScore) {
+        fallbackScore = score;
+        fallback = candidate;
+      }
+    }
+  }
+
+  const resolvedFallback = fallback ?? {
+    left: clamp(preferredRect.left, minLeft, maxLeft),
     top: clamp(preferredRect.top, minTop, maxTop),
     width: preferredRect.width,
     height: preferredRect.height,
   };
-  reservedRects.push(fallback);
-  return fallback;
+  reservedRects.push(resolvedFallback);
+  return resolvedFallback;
 }
 
 function shouldUseCompactOverlayTag(anchor: Point, transform: SurfaceDrawTransform, padding = 92): boolean {
@@ -3662,6 +5629,27 @@ function lerp(current: number, target: number, amount: number): number {
 function lerpAngle(current: number, target: number, amount: number): number {
   const delta = ((target - current + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
   return current + delta * amount;
+}
+
+function lerpPoint(start: Point, end: Point, amount: number): Point {
+  return {
+    x: lerp(start.x, end.x, amount),
+    y: lerp(start.y, end.y, amount),
+  };
+}
+
+function easeInOutCubic(value: number): number {
+  const clamped = clamp(value, 0, 1);
+  return clamped < 0.5
+    ? 4 * clamped * clamped * clamped
+    : 1 - Math.pow(-2 * clamped + 2, 3) / 2;
+}
+
+function easeOutBack(value: number): number {
+  const clamped = clamp(value, 0, 1);
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(clamped - 1, 3) + c1 * Math.pow(clamped - 1, 2);
 }
 
 function pointInRect(point: Point, rect: Rect): boolean {
@@ -3743,8 +5731,8 @@ function retargetTitleHero(): void {
 function resetTitleScreenActors(): void {
   const bounds = getTitleSceneBounds();
   titleScreenState.hero.position = {
-    x: bounds.left + bounds.width * 0.26,
-    y: bounds.top + bounds.height * 0.72,
+    x: bounds.left + bounds.width * 0.14,
+    y: bounds.top + bounds.height * 0.76,
   };
   titleScreenState.hero.target = { ...titleScreenState.hero.position };
   titleScreenState.hero.facing = 0;
@@ -4182,10 +6170,11 @@ function createNpcActors(): NpcActor[] {
       const seatPool = department.approachSide === "down" ? upperMeetingSeats : lowerMeetingSeats;
       const seatIndex = department.approachSide === "down" ? upperSeatIndex++ : lowerSeatIndex++;
       const meetingSeat = seatPool[seatIndex] ?? meetingSeats[Math.min(actorIndex, meetingSeats.length - 1)];
+      const npcId = `${department.id}-npc-${index}`;
       return {
-        id: `${department.id}-npc-${index}`,
+        id: npcId,
         department,
-        name: createNpcName(actorIndex),
+        name: createNpcName(actorIndex, npcId),
         role: department.npcRoles[index % department.npcRoles.length],
         x: anchor.x,
         y: anchor.y,
@@ -4479,6 +6468,123 @@ function isHandledKeyboardCode(code: string): boolean {
   return handledCodes.has(code);
 }
 
+function normalizeGamepadAxis(value: number | undefined): number {
+  const safeValue = typeof value === "number" ? clamp(value, -1, 1) : 0;
+  return Math.abs(safeValue) >= GAMEPAD_AXIS_THRESHOLD ? safeValue : 0;
+}
+
+function resetGamepadState(): void {
+  gamepadState.leftX = 0;
+  gamepadState.leftY = 0;
+  gamepadState.buttonA = false;
+  gamepadState.buttonB = false;
+}
+
+function getPrimaryGamepad(): Gamepad | null {
+  if (typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") {
+    return null;
+  }
+
+  const gamepads = navigator.getGamepads();
+  for (const gamepad of gamepads) {
+    if (gamepad && gamepad.connected) {
+      return gamepad;
+    }
+  }
+
+  return null;
+}
+
+function pollGamepadInput(): { aPressed: boolean; bPressed: boolean } {
+  const gamepad = getPrimaryGamepad();
+  const nextLeftX = gamepad ? normalizeGamepadAxis(gamepad.axes[0]) : 0;
+  const nextLeftY = gamepad ? normalizeGamepadAxis(gamepad.axes[1]) : 0;
+  const nextButtonA = Boolean(gamepad?.buttons[0]?.pressed);
+  const nextButtonB = Boolean(gamepad?.buttons[1]?.pressed);
+  const aPressed = nextButtonA && !gamepadState.buttonA;
+  const bPressed = nextButtonB && !gamepadState.buttonB;
+
+  gamepadState.leftX = nextLeftX;
+  gamepadState.leftY = nextLeftY;
+  gamepadState.buttonA = nextButtonA;
+  gamepadState.buttonB = nextButtonB;
+
+  return { aPressed, bPressed };
+}
+
+function handleGamepadActions(): void {
+  const { aPressed, bPressed } = pollGamepadInput();
+
+  if (routeErrorState.active) {
+    if (aPressed || bPressed) {
+      closeRouteError(true);
+    }
+    return;
+  }
+
+  if (helpOverlayState.active) {
+    if (aPressed || bPressed) {
+      closeHelpOverlay();
+    }
+    return;
+  }
+
+  if (searchOverlayState.active) {
+    if (bPressed) {
+      closeSearchOverlay();
+    }
+    return;
+  }
+
+  if (dashboardOverlayState.active) {
+    if (bPressed) {
+      closeDashboardOverlay();
+    }
+    return;
+  }
+
+  if (isTitleScreenActive()) {
+    if (aPressed && startupLoadState.ready) {
+      enterTitleExperience();
+    }
+    return;
+  }
+
+  if (introCinematicState.active) {
+    return;
+  }
+
+  if (isThankYouScreenActive()) {
+    if (aPressed || bPressed) {
+      closeThankYouScreen();
+    }
+    return;
+  }
+
+  if (!modal.classList.contains("hidden")) {
+    if (bPressed) {
+      closeModal();
+    }
+    return;
+  }
+
+  if (aPressed) {
+    if (hoveredPodium) {
+      toggleCentralMeeting();
+    } else if (hoveredGuide) {
+      openAreaGuideModal(hoveredGuide);
+    } else if (hoveredTerminal) {
+      openTerminal(hoveredTerminal);
+    } else if (hoveredExit) {
+      openThankYouScreen();
+    }
+  }
+
+  if (bPressed && hoveredInsight) {
+    collectInsight(hoveredInsight);
+  }
+}
+
 function isControlActive(control: ControlKey): boolean {
   if (touchControls.has(control)) {
     return true;
@@ -4486,13 +6592,13 @@ function isControlActive(control: ControlKey): boolean {
 
   switch (control) {
     case "forward":
-      return keys.has("KeyW") || keys.has("ArrowUp");
+      return keys.has("KeyW") || keys.has("ArrowUp") || gamepadState.leftY <= -GAMEPAD_AXIS_THRESHOLD;
     case "backward":
-      return keys.has("KeyS") || keys.has("ArrowDown");
+      return keys.has("KeyS") || keys.has("ArrowDown") || gamepadState.leftY >= GAMEPAD_AXIS_THRESHOLD;
     case "left":
-      return keys.has("KeyA") || keys.has("ArrowLeft");
+      return keys.has("KeyA") || keys.has("ArrowLeft") || gamepadState.leftX <= -GAMEPAD_AXIS_THRESHOLD;
     case "right":
-      return keys.has("KeyD") || keys.has("ArrowRight");
+      return keys.has("KeyD") || keys.has("ArrowRight") || gamepadState.leftX >= GAMEPAD_AXIS_THRESHOLD;
     case "turn-left":
       return false;
     case "turn-right":
@@ -4891,16 +6997,16 @@ function getInteractionTargetIndicatorTitle(target: InteractionTarget): string {
 function getInteractionTargetIndicatorAccent(target: InteractionTarget): string {
   switch (target.type) {
     case "podium":
-      return meetingState.active ? "#f4cf7d" : "#89d0ff";
+      return meetingState.active ? "#ffb703" : "#89d0ff";
     case "guide":
       return target.value.accent;
     case "terminal":
       if (target.value.kind === "external") {
-        return isLedServiceTerminal(target.value) ? "#f4cf7d" : "#89d0ff";
+        return isLedServiceTerminal(target.value) ? "#ffb703" : "#89d0ff";
       }
-      return completedScenarios.has(target.value.scenario.id) ? "#8be08c" : target.value.department.accent;
+      return completedScenarios.has(target.value.scenario.id) ? "#ffcf47" : target.value.department.accent;
     case "insight":
-      return collectedInsights.has(target.value.id) ? "#8be08c" : "#ffde7a";
+      return collectedInsights.has(target.value.id) ? "#ffcf47" : "#ffde7a";
     case "exit":
       return target.value.accent;
   }
@@ -5957,11 +8063,11 @@ function getSharedZoneOccupancyLabel(zone: SharedZone): string {
 function getDepartmentStateAccent(state: DepartmentVisualState): string {
   switch (state) {
     case "busy":
-      return "#f4cf7d";
+      return "#ffb703";
     case "online":
       return "#89d0ff";
     case "done":
-      return "#8be08c";
+      return "#ffcf47";
     case "idle":
     default:
       return "#8f96ab";
@@ -6528,7 +8634,7 @@ function updateMapHint(): void {
 }
 
 function updatePrompt(): void {
-  if (!shouldShowTaskPrompts()) {
+  if (introCinematicState.active) {
     prompt.classList.add("hidden");
     prompt.style.removeProperty("--prompt-accent");
     prompt.style.removeProperty("--prompt-accent-soft");
@@ -6538,8 +8644,9 @@ function updatePrompt(): void {
     return;
   }
 
+  const showTaskPrompts = shouldShowTaskPrompts();
   const target = getPromptTarget();
-  const followUpTarget = getNavigationFollowUpTarget();
+  const followUpTarget = showTaskPrompts ? getNavigationFollowUpTarget() : null;
   const { pendingQuestioner, pendingResponder } = getMeetingConversationActors();
   const meetingSummary = getMeetingDiscussionSummary();
   const meetingCandidates = getMeetingCandidateSummary(3);
@@ -6555,30 +8662,57 @@ function updatePrompt(): void {
 
   const promptAccent = getInteractionTargetIndicatorAccent(target);
   const distanceLabel = `${Math.max(1, Math.round(Math.sqrt(distanceSquared(player, getInteractionTargetPosition(target)))))}m`;
-  const arrivedAtTarget = focusArrivalTransition.pulse > 0.08 &&
+  const arrivedAtTarget = showTaskPrompts &&
+    focusArrivalTransition.pulse > 0.08 &&
     focusArrivalTransition.areaKey === getInteractionTargetAreaKey(target);
+  const metaItems = [
+    getInteractionTargetStatusLabel(target),
+    getInteractionTargetAreaLabel(target),
+  ];
+  if (showTaskPrompts && followUpTarget) {
+    metaItems.push(`${pickUiText("后续", "Next")} ${getNavigationTargetShortLabel(followUpTarget, 6)}`);
+  }
+  if (showTaskPrompts && goalRelayState.pulse > 0.08 && goalRelayState.toTarget) {
+    metaItems.push(`${pickUiText("接管", "Handoff")} ${getNavigationTargetShortLabel(goalRelayState.toTarget, 6)}`);
+  }
+  if (showTaskPrompts && departmentMilestoneState.pulse > 0.08) {
+    metaItems.push(`${pickUiText("闭环", "Loop")} ${shortenIndicatorTitle(departmentMilestoneState.title, 6)}`);
+  }
+  if (arrivedAtTarget) {
+    metaItems.push(pickUiText("已进入", "Entered"));
+  }
+  if (showTaskPrompts && target.type === "podium" && meetingState.active) {
+    metaItems.push(pickUiText(`第${meetingSummary.round}轮 ${meetingSummary.stageLabel}`, `R${meetingSummary.round} ${meetingSummary.stageLabel}`));
+  }
+  if (showTaskPrompts && target.type === "podium" && meetingStageCueState.pulse > 0.08) {
+    metaItems.push(meetingStageCueState.title);
+  }
+  if (showTaskPrompts && target.type === "podium" && meetingState.active) {
+    metaItems.push(`${pickUiText("候选", "Candidates")} ${meetingCandidates}`);
+  }
+  if (showTaskPrompts && pendingQuestioner && pendingResponder && target.type === "podium") {
+    metaItems.push(`${pickUiText("接力", "Relay")} ${trimSpeechSegment(pendingQuestioner.name, 4)}→${trimSpeechSegment(pendingResponder.name, 4)}`);
+  }
   const metaMarkup = `
     <div class="prompt-meta">
-      <span class="prompt-pill">${getInteractionTargetStatusLabel(target)}</span>
-      <span class="prompt-pill">${getInteractionTargetAreaLabel(target)}</span>
-      ${followUpTarget ? `<span class="prompt-pill">${pickUiText("后续", "Next")} ${getNavigationTargetShortLabel(followUpTarget, 6)}</span>` : ""}
-      ${goalRelayState.pulse > 0.08 && goalRelayState.toTarget ? `<span class="prompt-pill">${pickUiText("接管", "Handoff")} ${getNavigationTargetShortLabel(goalRelayState.toTarget, 6)}</span>` : ""}
-      ${departmentMilestoneState.pulse > 0.08 ? `<span class="prompt-pill">${pickUiText("闭环", "Loop")} ${shortenIndicatorTitle(departmentMilestoneState.title, 6)}</span>` : ""}
-      ${arrivedAtTarget ? `<span class="prompt-pill">${pickUiText("已进入", "Entered")}</span>` : ""}
-      ${target.type === "podium" && meetingState.active
-        ? `<span class="prompt-pill">${pickUiText(`第${meetingSummary.round}轮 ${meetingSummary.stageLabel}`, `R${meetingSummary.round} ${meetingSummary.stageLabel}`)}</span>`
-        : ""}
-      ${target.type === "podium" && meetingStageCueState.pulse > 0.08
-        ? `<span class="prompt-pill">${meetingStageCueState.title}</span>`
-        : ""}
-      ${target.type === "podium" && meetingState.active
-        ? `<span class="prompt-pill">${pickUiText("候选", "Candidates")} ${meetingCandidates}</span>`
-        : ""}
-      ${pendingQuestioner && pendingResponder && target.type === "podium"
-        ? `<span class="prompt-pill">${pickUiText("接力", "Relay")} ${trimSpeechSegment(pendingQuestioner.name, 4)}→${trimSpeechSegment(pendingResponder.name, 4)}</span>`
-        : ""}
+      ${metaItems.map((item) => `<span class="prompt-pill">${item}</span>`).join("")}
     </div>
   `;
+
+  const keyLabel = isTapInteractionMode()
+    ? pickUiText("点击", "Tap")
+    : target.type === "insight"
+      ? "F"
+      : "E";
+  const keyClass = isTapInteractionMode() ? " prompt-key--touch" : "";
+  const interactionModeKey = isTapInteractionMode() ? "tap" : "keys";
+  const promptActionMarkup = (label: string): string => `
+    <div class="prompt-action">
+      <span class="prompt-key${keyClass}">${keyLabel}</span>
+      <span>${label}</span>
+    </div>
+  `;
+
   let promptMarkup = "";
   let promptKey = "";
   if (target.type === "podium") {
@@ -6586,9 +8720,9 @@ function updatePrompt(): void {
       ? pickUiText(`状态：${meetingSummary.pill} · ${meetingSummary.detail}`, `Status: ${meetingSummary.pill} · ${meetingSummary.detail}`)
       : pickUiText("状态：待开始", "Status: Ready");
     const action = meetingState.active
-      ? (isTapInteractionMode() ? "点击解散会议" : "按 E 解散会议")
-      : (isTapInteractionMode() ? "点击召集所有 NPC 入座" : "按 E 召集所有 NPC 入座");
-    promptKey = `podium:${meetingState.active ? "active" : "idle"}:${distanceLabel}:${meetingStageCueState.phaseKind}:${meetingStageCueState.detail}:${Math.round(meetingStageCueState.pulse * 10)}`;
+      ? pickUiText("解散会议", "Dismiss meeting")
+      : pickUiText("召集所有 NPC 入座", "Gather all NPCs");
+    promptKey = `podium:${interactionModeKey}:${showTaskPrompts ? "task" : "free"}:${meetingState.active ? "active" : "idle"}:${distanceLabel}:${meetingStageCueState.phaseKind}:${meetingStageCueState.detail}:${Math.round(meetingStageCueState.pulse * 10)}`;
     promptMarkup = `
       <div class="prompt-head">
         <span class="prompt-chip">${getPromptTargetChipLabel(target)}</span>
@@ -6597,14 +8731,13 @@ function updatePrompt(): void {
       </div>
       ${metaMarkup}
       <div class="prompt-detail">${detail}</div>
-      ${meetingState.active && meetingStageCueState.pulse > 0.08
+      ${showTaskPrompts && meetingState.active && meetingStageCueState.pulse > 0.08
         ? `<div class="prompt-detail">${pickUiText("切镜：", "Focus: ")}${meetingStageCueState.detail}</div>`
         : ""}
-      <div class="prompt-action">${action}</div>
+      ${promptActionMarkup(action)}
     `;
   } else if (target.type === "guide") {
-    const action = isTapInteractionMode() ? "点击查看完整导览" : "按 E 查看完整导览";
-    promptKey = `guide:${target.value.id}:${distanceLabel}`;
+    promptKey = `guide:${interactionModeKey}:${showTaskPrompts ? "task" : "free"}:${target.value.id}:${distanceLabel}`;
     promptMarkup = `
       <div class="prompt-head">
         <span class="prompt-chip">${getPromptTargetChipLabel(target)}</span>
@@ -6613,15 +8746,14 @@ function updatePrompt(): void {
       </div>
       ${metaMarkup}
       <div class="prompt-detail">${target.value.preview}</div>
-      <div class="prompt-action">${action}</div>
+      ${promptActionMarkup(pickUiText("查看完整导览", "Open full guide"))}
     `;
   } else if (target.type === "terminal") {
     if (target.value.kind === "external") {
       const detail = isLedServiceTerminal(target.value)
         ? pickUiText("状态：重点外部入口", "Status: Priority External Gate")
         : pickUiText("状态：网页终端", "Status: Web Terminal");
-      const action = isTapInteractionMode() ? "点击弹窗打开网站" : "按 E 弹窗打开网站";
-      promptKey = `terminal:${target.value.id}:external:${distanceLabel}`;
+      promptKey = `terminal:${interactionModeKey}:${showTaskPrompts ? "task" : "free"}:${target.value.id}:external:${distanceLabel}`;
       promptMarkup = `
         <div class="prompt-head">
           <span class="prompt-chip">${getPromptTargetChipLabel(target)}</span>
@@ -6630,17 +8762,14 @@ function updatePrompt(): void {
         </div>
         ${metaMarkup}
         <div class="prompt-detail">${detail}</div>
-        <div class="prompt-action">${action}</div>
+        ${promptActionMarkup(pickUiText("弹窗打开网站", "Open popup site"))}
       `;
     } else {
       const done = completedScenarios.has(target.value.scenario.id);
       const detail = done
         ? pickUiText("状态：已执行", "Status: Done")
         : pickUiText("状态：可执行", "Status: Ready");
-      const action = done
-        ? (isTapInteractionMode() ? "点击继续查看" : "按 E 继续查看")
-        : (isTapInteractionMode() ? "点击开始演示" : "按 E 开始演示");
-      promptKey = `terminal:${target.value.scenario.id}:${done ? "done" : "todo"}:${distanceLabel}`;
+      promptKey = `terminal:${interactionModeKey}:${showTaskPrompts ? "task" : "free"}:${target.value.scenario.id}:${done ? "done" : "todo"}:${distanceLabel}`;
       promptMarkup = `
         <div class="prompt-head">
           <span class="prompt-chip">${getPromptTargetChipLabel(target)}</span>
@@ -6649,13 +8778,11 @@ function updatePrompt(): void {
         </div>
         ${metaMarkup}
         <div class="prompt-detail">${detail}</div>
-        <div class="prompt-action">${action}</div>
+        ${promptActionMarkup(done ? pickUiText("继续查看", "Review again") : pickUiText("开始演示", "Run scene"))}
       `;
     }
   } else if (target.type === "exit") {
-    const detail = pickUiText("状态：离开应用后显示感谢参与与联系方式", "Status: finish and show the thank-you screen");
-    const action = isTapInteractionMode() ? "点击结束演示" : "按 E 结束演示";
-    promptKey = `exit:${target.value.id}:${distanceLabel}`;
+    promptKey = `exit:${interactionModeKey}:${showTaskPrompts ? "task" : "free"}:${target.value.id}:${distanceLabel}`;
     promptMarkup = `
       <div class="prompt-head">
         <span class="prompt-chip">${getPromptTargetChipLabel(target)}</span>
@@ -6663,18 +8790,15 @@ function updatePrompt(): void {
         <span class="prompt-distance">${distanceLabel}</span>
       </div>
       ${metaMarkup}
-      <div class="prompt-detail">${detail}</div>
-      <div class="prompt-action">${action}</div>
+      <div class="prompt-detail">${pickUiText("状态：离开应用后显示感谢参与与联系方式", "Status: finish and show the thank-you screen")}</div>
+      ${promptActionMarkup(pickUiText("结束演示", "Finish walkthrough"))}
     `;
   } else if (target.type === "insight") {
     const done = collectedInsights.has(target.value.id);
     const detail = done
       ? pickUiText("状态：已记录", "Status: Captured")
       : pickUiText("状态：可记录", "Status: Available");
-    const action = done
-      ? (isTapInteractionMode() ? "点击复看洞察" : "按 F 复看洞察")
-      : (isTapInteractionMode() ? "点击保存洞察" : "按 F 保存洞察");
-    promptKey = `insight:${target.value.id}:${done ? "done" : "todo"}:${distanceLabel}`;
+    promptKey = `insight:${interactionModeKey}:${showTaskPrompts ? "task" : "free"}:${target.value.id}:${done ? "done" : "todo"}:${distanceLabel}`;
     promptMarkup = `
       <div class="prompt-head">
         <span class="prompt-chip">${getPromptTargetChipLabel(target)}</span>
@@ -6683,7 +8807,7 @@ function updatePrompt(): void {
       </div>
       ${metaMarkup}
       <div class="prompt-detail">${detail}</div>
-      <div class="prompt-action">${action}</div>
+      ${promptActionMarkup(done ? pickUiText("复看洞察", "Review insight") : pickUiText("保存洞察", "Capture insight"))}
     `;
   } else {
     return assertNever(target, "Unknown prompt target");
@@ -6741,6 +8865,8 @@ function applyUiLanguage(): void {
     }
   });
 
+  searchInput.placeholder = getLocalizedString("search.placeholder");
+
   syncStartTitleAriaLabel();
 
   if (
@@ -6753,32 +8879,86 @@ function applyUiLanguage(): void {
     lastEventText = getLocalizedString("dashboard.waiting");
   }
 
-  thesisList.innerHTML = currentThesisPoints.map((point) => `<li>${point}</li>`).join("");
+  currentThesisPointIndex = 0;
+  renderThesisPoint();
   mapFloorIndicator.textContent = getLocalizedString("map.floorIndicator");
   currentZoneElement.textContent = getDefaultZoneLabel();
   currentZoneElement.style.color = "#f5f7ff";
   currentZoneElement.style.textShadow = "";
   syncUiVisibility();
+  syncHelpOverlayUi();
+  syncSearchOverlayUi();
+  syncDashboardOverlayUi();
+  syncOnboardingOverlayUi();
+  syncCrashRecoveryUi();
+  syncNetworkBannerUi();
+  syncRouteErrorUi();
+  syncPresenterCountdownUi();
+  syncDebugHudUi();
+  updateStartupLoadingUi();
+  updateBuildVersionLabel();
+  autosaveIndicator.textContent = getLocalizedString("autosave.saved");
   updateClockPanel();
+  renderThankYouDebrief();
   renderThankYouContactList();
   syncThankYouScreenUi();
   renderSourceList();
+  if (searchOverlayState.active) {
+    renderSearchResults();
+  }
+  if (dashboardOverlayState.active) {
+    renderDashboardOverlay();
+  }
+  renderDebugActions();
+  renderDebugHud();
   renderDepartmentList();
   updateStats();
+  updatePresenterBrief();
   updateHudStatus();
   updateMapHint();
+  persistOfficeState();
 }
 
 function renderSourceList(): void {
-  sourceList.innerHTML = translateRuntimeMarkup(currentUniqueSources
-    .map(
-      (source) => `
-        <a class="source-link" href="${source.url}" target="_blank" rel="noreferrer">
-          ${source.label}
-          <span>${source.detail}</span>
-        </a>
-      `
-    )
+  const classifySourceItem = (source: SourceItem): "industry" | "product" | "caseStudy" | "research" | "other" => {
+    const haystack = `${source.label} ${source.detail} ${source.url}`.toLowerCase();
+    if (/(mckinsey|gartner|forrester|deloitte|pwc|benchmark|report|industry|market)/.test(haystack)) {
+      return "industry";
+    }
+    if (/(docs|documentation|openai|anthropic|github|developer|product|api|manual|guide)/.test(haystack)) {
+      return "product";
+    }
+    if (/(arxiv|research|paper|ieee|acm|nature|science|study)/.test(haystack)) {
+      return "research";
+    }
+    if (/(case|customer|client|success|story|example|hubspot|salesforce|zendesk|shopify|stripe)/.test(haystack)) {
+      return "caseStudy";
+    }
+    return "other";
+  };
+
+  const categoryOrder = ["industry", "product", "caseStudy", "research", "other"] as const;
+  const groups = new Map<string, SourceItem[]>();
+  currentUniqueSources.forEach((source) => {
+    const category = classifySourceItem(source);
+    const bucket = groups.get(category) ?? [];
+    bucket.push(source);
+    groups.set(category, bucket);
+  });
+
+  sourceList.innerHTML = translateRuntimeMarkup(categoryOrder
+    .filter((category) => (groups.get(category)?.length ?? 0) > 0)
+    .map((category) => `
+      <section class="source-group">
+        <div class="source-group__title">${getLocalizedString(`sources.${category}`)}</div>
+        ${groups.get(category)?.map((source) => `
+          <a class="source-link" href="${source.url}" target="_blank" rel="noreferrer">
+            ${source.label}
+            <span>${getScenarioSourceDomain(source.url)} · ${source.detail}</span>
+          </a>
+        `).join("") ?? ""}
+      </section>
+    `)
     .join(""));
 }
 
@@ -7145,8 +9325,42 @@ function renderDepartmentList(): void {
     })
     .join("");
 
+  const favoriteMarkup = (() => {
+    const favorites = getFavoriteScenarioEntries();
+    if (favorites.length === 0) {
+      return `
+        <div class="route-subhead">${getLocalizedString("favorites.title")}</div>
+        <div class="favorite-empty">${getLocalizedString("favorites.empty")}</div>
+      `;
+    }
+
+    return `
+      <div class="route-subhead">${getLocalizedString("favorites.title")}</div>
+      <div class="favorite-scenario-list">
+        ${favorites.map(({ department, scenario }) => `
+          <button
+            class="favorite-scenario-button"
+            type="button"
+            data-favorite-scenario-id="${scenario.id}"
+            style="--dept-accent:${department.accent};"
+          >
+            <div class="favorite-scenario-button__head">
+              <strong>${scenario.title}</strong>
+              <span class="dept-tag">${getDepartmentUiLabel(department)}</span>
+            </div>
+            <div class="favorite-scenario-button__meta">
+              <span class="favorite-star">★</span>
+              <span>${scenario.hook}</span>
+            </div>
+          </button>
+        `).join("")}
+      </div>
+    `;
+  })();
+
   departmentList.innerHTML = translateRuntimeMarkup(`
     ${routeSummaryMarkup}
+    ${favoriteMarkup}
     <div class="route-subhead">部门工位</div>
     ${departmentMarkup}
     <div class="route-subhead">公共区</div>
@@ -7260,58 +9474,229 @@ function getSharedZoneModalCopy(zone: SharedZone): {
   };
 }
 
-function openDepartmentModal(department: SceneDepartment, highlightScenarioId?: string): void {
-  modalSharedZone = null;
-  modalDepartment = department;
-  modal.classList.remove("hidden");
+function renderReceptionTakeawayModal(): void {
+  const receptionRevealed = completedSharedZones.has("reception");
+  const tickets = [
+    {
+      accent: "#89d0ff",
+      tiltClass: "ticket-card--tilt-left",
+      avatar: "LZ",
+      customer: "Lina Zhou",
+      company: "Northwind Ops",
+      priorityLabel: pickUiText("低", "Low"),
+      priorityTone: "low",
+      issue: pickUiText("发票抬头少了一个右括号，客户要今天内重发。", "The invoice title is missing a closing parenthesis and must be resent today."),
+      context: pickUiText("格式固定、约束明确、规则一眼能写完。", "Fixed format, narrow context, and the rule is obvious."),
+      verdictTitle: "Rules Engine",
+      verdictTone: "rules",
+      verdictSummary: pickUiText("这种票不要上重武器。规则引擎更快、更稳、更便宜。", "Do not use a heavy agent here. A rules engine is faster, safer, and cheaper."),
+    },
+    {
+      accent: "#ffb703",
+      tiltClass: "ticket-card--tilt-center",
+      avatar: "MR",
+      customer: "Mia Ren",
+      company: "Harbor Retail",
+      priorityLabel: pickUiText("高", "High"),
+      priorityTone: "high",
+      issue: pickUiText("把 40 条客户反馈、评论和竞品更新压成一页上会摘要。", "Compress 40 customer threads, reviews, and competitor changes into one exec brief."),
+      context: pickUiText("来源多、上下文长、还要判断轻重缓急。", "Many sources, long context, and the work requires judgment."),
+      verdictTitle: "OpenClaw",
+      verdictTone: "openclaw",
+      verdictSummary: pickUiText("这就是甜蜜区：拉数据、做判断、出摘要、再回写。", "This is the sweet spot: fetch context, reason across it, produce the brief, then write back."),
+    },
+    {
+      accent: "#ff6b6b",
+      tiltClass: "ticket-card--tilt-right",
+      avatar: "AS",
+      customer: "Arjun Singh",
+      company: "Factory Line 7",
+      priorityLabel: pickUiText("中", "Medium"),
+      priorityTone: "medium",
+      issue: pickUiText("产线补丁后偶发停机，日志像是对的，但现场不放心。", "A line occasionally stalls after a patch. The logs look fine, but the floor still does not trust it."),
+      context: pickUiText("风险高、例外多、需要人真正背书。", "High risk, many exceptions, and someone needs to truly own the call."),
+      verdictTitle: pickUiText("资深工程师", "Senior Engineer"),
+      verdictTone: "human",
+      verdictSummary: pickUiText("先别让 Agent 接锅。先上老师傅，现场判断优先。", "Do not let an agent own this one first. Put a senior engineer on the floor."),
+    },
+  ] as const;
 
   modalContent.innerHTML = translateRuntimeMarkup(`
     <div class="modal-headline">
-      <div class="eyebrow">面对面对话</div>
-      <h2>${department.shortName} · ${department.name}</h2>
-      <p>${department.intro}</p>
-      <p><strong>讲述重点：</strong>${department.speakerNote}</p>
+      <div class="eyebrow">${pickUiText("开门第一分钟", "Minute One")}</div>
+      <h2>${pickUiText("三张工单，不是同一种工作。", "Three Tickets, Three Different Kinds of Work.")}</h2>
+      <p>${pickUiText("先别急着装 OpenClaw。先看工作本身，再决定谁来做、用什么做。", "Do not rush to install OpenClaw. Look at the work first, then decide who should handle it and with what.")}</p>
+      <p><strong>${pickUiText("讲述重点：", "Story beat:")}</strong>${pickUiText("开场先把“不是所有问题都该上 Agent”讲透，后面再把 OpenClaw 放回甜蜜区。", "Use the opening to make one point clear: not every task belongs to an agent. Then place OpenClaw back into its sweet spot.")}</p>
     </div>
-    <div class="scenario-grid">
-      ${department.scenarios
-        .map((scenario) => {
-          const done = completedScenarios.has(scenario.id);
-          const highlight =
-            scenario.id === highlightScenarioId
-              ? "style=\"box-shadow:0 0 0 3px rgba(255,255,255,0.08), 0 0 0 6px rgba(124,226,255,0.35);\""
-              : "";
-          return `
-            <article class="scenario-card ${done ? "done" : ""}" ${highlight}>
-              <div class="eyebrow">${done ? "已执行" : "待执行"}</div>
-              <h3>${scenario.title}</h3>
-              <div class="scenario-hook">${scenario.hook}</div>
-              <p><strong>业务痛点：</strong>${scenario.problem}</p>
-              <div class="scenario-footer">
-                <p><strong>产出物：</strong>${scenario.outputs.join(" / ")}</p>
-                <div class="scenario-stat">${scenario.stat}</div>
-                <div class="action-row">
-                  <button class="action-button" data-run-scenario="${scenario.id}">
-                    ${done ? "重播场景" : "开始演示"}
-                  </button>
-                  <span class="impact-chip">+${scenario.impactScore} 执行力分</span>
-                  <a class="ghost-button" href="${scenario.source.url}" target="_blank" rel="noreferrer">查看参考</a>
+    <section class="takeaway-stage takeaway-stage--reception">
+      <div class="takeaway-stage__lead">
+        <span class="takeaway-stage__badge">${pickUiText("工单派送板", "Dispatch Board")}</span>
+        <p>${pickUiText("这三张工单故意错落摆着，因为它们看起来都像“AI 能做”，但答案并不一样。", "These three tickets are deliberately scattered because they all look like 'AI tasks' from far away, but the right answer is different for each one.")}</p>
+      </div>
+      <div class="takeaway-tickets ${receptionRevealed ? "is-revealed" : ""}" data-reception-tickets>
+        <div class="takeaway-ticket-grid">
+          ${tickets.map((ticket) => `
+            <article class="ticket-card ${ticket.tiltClass}" style="--ticket-accent:${ticket.accent};">
+              <div class="ticket-card__inner">
+                <div class="ticket-card__face ticket-card__face--front">
+                  <div class="ticket-card__topline">
+                    <div class="ticket-avatar">${ticket.avatar}</div>
+                    <div>
+                      <strong>${ticket.customer}</strong>
+                      <span>${ticket.company}</span>
+                    </div>
+                    <span class="ticket-priority ticket-priority--${ticket.priorityTone}">${ticket.priorityLabel}</span>
+                  </div>
+                  <div class="ticket-card__label">${pickUiText("客户工单", "Customer Ticket")}</div>
+                  <h3>${ticket.issue}</h3>
+                  <p>${ticket.context}</p>
                 </div>
-                ${done ? `<div class="result-box"><strong>演示结果</strong>${scenario.demoResult}</div>` : ""}
+                <div class="ticket-card__face ticket-card__face--back ticket-card__face--${ticket.verdictTone}">
+                  <div class="ticket-card__label">${pickUiText("揭晓结果", "Verdict")}</div>
+                  <div class="ticket-verdict">${ticket.verdictTitle}</div>
+                  <p>${ticket.verdictSummary}</p>
+                </div>
               </div>
             </article>
-          `;
-        })
-        .join("")}
-    </div>
+          `).join("")}
+        </div>
+        <div class="takeaway-stage__actions">
+          <button class="action-button" type="button" data-reveal-reception="true" ${receptionRevealed ? "disabled" : ""}>${receptionRevealed ? pickUiText("已揭晓", "Revealed") : pickUiText("揭晓这三张工单", "Reveal The Three Tickets")}</button>
+          <span class="takeaway-stage__hint">${receptionRevealed
+            ? pickUiText("前台判断已完成，可以继续去部门看真实工作。", "Reception is complete. Continue into the departments for the real work.")
+            : pickUiText("会按左 → 中 → 右 逐一翻面。", "They will flip left → center → right.")}</span>
+        </div>
+      </div>
+    </section>
   `);
 }
 
-function openSharedZoneModal(zone: SharedZone): void {
-  const copy = getSharedZoneModalCopy(zone);
-  modalDepartment = null;
-  modalSharedZone = zone;
-  modal.classList.remove("hidden");
+function renderCafeteriaTakeawayModal(): void {
+  const tools = [
+    {
+      slot: "north-west",
+      accent: "#89d0ff",
+      name: "Rules Engine",
+      persona: pickUiText("格式老工匠", "Format Mechanic"),
+      price: "$0.01",
+      fit: pickUiText("固定格式、低变体、强约束。", "Fixed format, low variance, hard constraints."),
+      cost: 2,
+      featured: false,
+    },
+    {
+      slot: "north-center",
+      accent: "#8fd2ff",
+      name: "OCR Macro",
+      persona: pickUiText("表单速录员", "OCR Clerk"),
+      price: "$1",
+      fit: pickUiText("纸面提取、截图归档、批量录入。", "Paper extraction, screenshot parsing, bulk intake."),
+      cost: 14,
+      featured: false,
+    },
+    {
+      slot: "north-east",
+      accent: "#6fd7c6",
+      name: "RPA Bot",
+      persona: pickUiText("流水线操作员", "RPA Operator"),
+      price: "$3",
+      fit: pickUiText("稳定按钮流、跨系统搬运。", "Stable button flows and cross-system shuttling."),
+      cost: 24,
+      featured: false,
+    },
+    {
+      slot: "center",
+      accent: "#ffb703",
+      name: "OpenClaw",
+      persona: pickUiText("甜蜜区指挥台", "Sweet-Spot Orchestrator"),
+      price: "$20",
+      fit: pickUiText("多来源检索、判断、执行、回写。", "Multi-source retrieval, judgment, execution, and write-back."),
+      cost: 48,
+      featured: true,
+    },
+    {
+      slot: "south-west",
+      accent: "#89d0ff",
+      name: "BI Dashboard",
+      persona: pickUiText("结果播报员", "Results Broadcaster"),
+      price: "$8",
+      fit: pickUiText("稳定看板、对齐口径、复盘汇总。", "Stable dashboards, aligned reporting, recap summaries."),
+      cost: 34,
+      featured: false,
+    },
+    {
+      slot: "south-center",
+      accent: "#ff8d66",
+      name: pickUiText("通用聊天机器人", "Generic Chatbot"),
+      persona: pickUiText("万能实习生", "Generalist Intern"),
+      price: "$5",
+      fit: pickUiText("解释、草拟、轻问答。", "Explanation, drafting, lightweight Q&A."),
+      cost: 28,
+      featured: false,
+    },
+    {
+      slot: "south-east",
+      accent: "#ff6b6b",
+      name: pickUiText("资深工程师", "Senior Engineer"),
+      persona: pickUiText("压轴老师傅", "Master Fixer"),
+      price: "$150",
+      fit: pickUiText("高风险例外、现场判断、最后拍板。", "High-risk exceptions, floor judgment, final ownership."),
+      cost: 96,
+      featured: false,
+    },
+  ] as const;
 
+  modalContent.innerHTML = translateRuntimeMarkup(`
+    <div class="modal-headline">
+      <div class="eyebrow">${pickUiText("结尾工具箱", "Final Tool Bench")}</div>
+      <h2>${pickUiText("先看活，再选工具。别反过来。", "Look At The Work First. Then Pick The Tool.")}</h2>
+      <p>${pickUiText("结尾不要把 OpenClaw 讲成万能神兵，而是把它放回一排工具里，清楚告诉观众：这 40 个场景为什么落在它的甜蜜区。", "Do not sell OpenClaw as a universal weapon in the ending. Put it back into the tool bench and show why these 40 scenes land in its sweet spot.")}</p>
+    </div>
+    <section class="takeaway-stage takeaway-stage--cafeteria">
+      <div class="takeaway-stage__lead">
+        <span class="takeaway-stage__badge">${pickUiText("七工具终局", "Seven-Tool Finale")}</span>
+        <p>${pickUiText("中间那一张是 OpenClaw，但它不是因为“最强”站中间，而是因为这场演讲挑出来的工作，刚好都适合它。", "OpenClaw stands in the center, not because it is magically strongest, but because this talk deliberately selected work that fits it.")}</p>
+      </div>
+      <div class="tool-showcase">
+        <div class="tool-showcase__grid">
+          ${tools.map((tool) => `
+            <article class="tool-card ${tool.featured ? "tool-card--featured" : ""}" style="--tool-accent:${tool.accent}; grid-area:${tool.slot};">
+              <div class="tool-card__price">${tool.price}</div>
+              <h3>${tool.name}</h3>
+              <div class="tool-card__persona">${tool.persona}</div>
+              <p>${tool.fit}</p>
+            </article>
+          `).join("")}
+        </div>
+        <div class="tool-axis">
+          <div class="tool-axis__rail"></div>
+          <div class="tool-axis__labels">
+            <span>$0.01</span>
+            <span>$150</span>
+          </div>
+          ${tools.map((tool) => `
+            <span class="tool-axis__dot ${tool.featured ? "tool-axis__dot--featured" : ""}" style="--dot-accent:${tool.accent}; --dot-pos:${tool.cost}%;"></span>
+          `).join("")}
+        </div>
+        <div class="tool-thesis">
+          ${pickUiText("今天这 40 个场景，都是我先挑过工作，再把 OpenClaw 放上去。", "These 40 scenes were selected by work shape first, then matched to OpenClaw.")}
+        </div>
+      </div>
+    </section>
+  `);
+}
+
+function renderSharedZoneModal(zone: SharedZone): void {
+  if (zone.kind === "reception") {
+    renderReceptionTakeawayModal();
+    return;
+  }
+
+  if (zone.kind === "cafeteria") {
+    renderCafeteriaTakeawayModal();
+    return;
+  }
+
+  const copy = getSharedZoneModalCopy(zone);
   modalContent.innerHTML = translateRuntimeMarkup(`
     <div class="modal-headline">
       <div class="eyebrow">小龙虾导览</div>
@@ -7338,8 +9723,263 @@ function openSharedZoneModal(zone: SharedZone): void {
   `);
 }
 
+function buildDepartmentRouteHash(departmentId: string, scenarioId?: string): string {
+  const encodedDepartmentId = encodeURIComponent(departmentId);
+  if (!scenarioId) {
+    return `#/d/${encodedDepartmentId}`;
+  }
+  return `#/d/${encodedDepartmentId}/${encodeURIComponent(scenarioId)}`;
+}
+
+function buildSharedZoneRouteHash(zoneId: string): string {
+  return `#/z/${encodeURIComponent(zoneId)}`;
+}
+
+function updateBrowserRouteHash(nextHash: string): void {
+  const url = new URL(window.location.href);
+  url.hash = nextHash.startsWith("#") ? nextHash.slice(1) : nextHash;
+  history.replaceState(null, "", url);
+}
+
+function hideModalImmediately(): void {
+  stopSpeechNarration(false);
+  if (modalTimer !== null) {
+    window.clearTimeout(modalTimer);
+    modalTimer = null;
+  }
+  if (modalOpenFrame !== null) {
+    window.cancelAnimationFrame(modalOpenFrame);
+    modalOpenFrame = null;
+  }
+  modal.classList.add("hidden");
+  modal.classList.remove("is-open", "is-closing");
+  modalDepartment = null;
+  modalSharedZone = null;
+  clearPresenterSceneContext();
+  syncModalUi();
+  updatePresenterBrief();
+  renderSpeakerNotesWindow();
+}
+
+function revealOfficeShell(): void {
+  titleScreenState.active = false;
+  titleScreenState.phase = "intro";
+  thankYouScreenState.active = false;
+  introCinematicState.active = false;
+  helpOverlayState.active = false;
+  searchOverlayState.active = false;
+  dashboardOverlayState.active = false;
+  dismissOnboarding(false);
+  syncHelpOverlayUi();
+  syncSearchOverlayUi();
+  syncDashboardOverlayUi();
+  syncTitleScreenUi();
+  syncThankYouScreenUi();
+  syncIntroCinematicUi();
+}
+
+function showRouteError(routePath = window.location.hash || ""): void {
+  revealOfficeShell();
+  hideModalImmediately();
+  routeErrorState.path = routePath || "";
+  routeErrorState.active = true;
+  syncRouteErrorUi();
+  routeErrorActionButton.focus();
+}
+
+function closeRouteError(clearHash = false): void {
+  if (!routeErrorState.active && !clearHash) {
+    return;
+  }
+  routeErrorState.active = false;
+  routeErrorState.path = "";
+  syncRouteErrorUi();
+  if (clearHash) {
+    updateBrowserRouteHash("");
+  }
+}
+
+function decodeRouteSegment(segment: string | undefined): string | null {
+  if (!segment) {
+    return null;
+  }
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+}
+
+function applyRouteFromHash(): void {
+  const rawHash = window.location.hash.trim();
+  const normalizedRoute = rawHash.replace(/^#\/?/, "").replace(/\/+$/, "");
+  if (!normalizedRoute) {
+    closeRouteError(false);
+    if (!modal.classList.contains("hidden")) {
+      closeModal();
+    }
+    return;
+  }
+
+  const segments = normalizedRoute.split("/").filter(Boolean);
+  const routeType = segments[0];
+  const routeValue = decodeRouteSegment(segments[1]);
+  if (!routeValue) {
+    showRouteError(rawHash);
+    return;
+  }
+
+  if (routeType === "d" || routeType === "department") {
+    const department = departments.find((item) => item.id === routeValue) ?? null;
+    const scenarioId = decodeRouteSegment(segments[2]) ?? undefined;
+    if (!department) {
+      showRouteError(rawHash);
+      return;
+    }
+    if (scenarioId && !department.scenarios.some((scenario) => scenario.id === scenarioId)) {
+      showRouteError(rawHash);
+      return;
+    }
+    closeRouteError(false);
+    revealOfficeShell();
+    teleportToDepartment(department);
+    openDepartmentModal(department, scenarioId);
+    return;
+  }
+
+  if (routeType === "z" || routeType === "shared" || routeType === "zone") {
+    const zone = sharedZones.find((item) => item.id === routeValue) ?? null;
+    if (!zone) {
+      showRouteError(rawHash);
+      return;
+    }
+    closeRouteError(false);
+    revealOfficeShell();
+    teleportToSharedZone(zone);
+    openSharedZoneModal(zone);
+    return;
+  }
+
+  showRouteError(rawHash);
+}
+
+function openDepartmentModal(department: SceneDepartment, highlightScenarioId?: string): void {
+  stopSpeechNarration(false);
+  if (modalTimer !== null) {
+    window.clearTimeout(modalTimer);
+    modalTimer = null;
+  }
+  if (modalOpenFrame !== null) {
+    window.cancelAnimationFrame(modalOpenFrame);
+    modalOpenFrame = null;
+  }
+  modalSharedZone = null;
+  modalDepartment = department;
+  const focusScenario = highlightScenarioId
+    ? department.scenarios.find((scenario) => scenario.id === highlightScenarioId) ?? null
+    : getRecommendedDepartmentScenario(department);
+  updatePresenterSceneContext(
+    `department:${department.id}:${focusScenario?.id ?? "overview"}`,
+    {
+      scenarioId: focusScenario?.id,
+      departmentId: department.id,
+    }
+  );
+  modal.classList.remove("hidden", "is-closing");
+  modal.classList.remove("is-open");
+  modalOpenFrame = window.requestAnimationFrame(() => {
+    modal.classList.add("is-open");
+    modalOpenFrame = null;
+  });
+  syncModalUi();
+  updatePresenterBrief();
+  renderSpeakerNotesWindow();
+  updateBrowserRouteHash(buildDepartmentRouteHash(department.id, highlightScenarioId));
+
+  modalContent.innerHTML = translateRuntimeMarkup(`
+    <div class="modal-headline">
+      <div class="eyebrow">面对面对话</div>
+      <h2>${department.shortName} · ${department.name}</h2>
+      <p>${department.intro}</p>
+      <p><strong>讲述重点：</strong>${department.speakerNote}</p>
+    </div>
+    <div class="scenario-grid">
+      ${department.scenarios
+        .map((scenario) => {
+          const done = completedScenarios.has(scenario.id);
+          const sourceDomain = getScenarioSourceDomain(scenario.source.url);
+          const highlight =
+            scenario.id === highlightScenarioId
+              ? "style=\"box-shadow:0 0 0 3px rgba(255,255,255,0.08), 0 0 0 6px rgba(124,226,255,0.35);\""
+              : "";
+          return `
+            <article class="scenario-card ${done ? "done" : ""}" ${highlight}>
+              <div class="eyebrow">${done ? "已执行" : "待执行"}</div>
+              <h3>${scenario.title}</h3>
+              <div class="scenario-hook">${scenario.hook}</div>
+              <p><strong>业务痛点：</strong>${scenario.problem}</p>
+              <div class="scenario-footer">
+                <p><strong>产出物：</strong>${scenario.outputs.join(" / ")}</p>
+                <div class="scenario-stat">${renderScenarioStatMarkup(scenario.stat)}</div>
+                ${renderImpactMeterMarkup(scenario.impactScore)}
+                <div class="scenario-source">
+                  <span class="scenario-source__domain">${sourceDomain}</span>
+                  <span>${scenario.source.label}</span>
+                </div>
+                <div class="action-row">
+                  <button class="action-button" data-run-scenario="${scenario.id}">
+                    ${done ? "重播场景" : "开始演示"}
+                  </button>
+                  <span class="impact-chip">+${formatLocalizedNumber(scenario.impactScore)} 执行力分</span>
+                  <button
+                    type="button"
+                    class="bookmark-button ${isScenarioFavorited(scenario.id) ? "is-active" : ""}"
+                    data-toggle-favorite="${scenario.id}"
+                    aria-pressed="${String(isScenarioFavorited(scenario.id))}"
+                  >
+                    ${isScenarioFavorited(scenario.id) ? getLocalizedString("favorites.remove") : getLocalizedString("favorites.add")}
+                  </button>
+                  <a class="ghost-button" href="${scenario.source.url}" target="_blank" rel="noreferrer">${sourceDomain}</a>
+                </div>
+                ${done ? `<div class="result-box"><strong>演示结果</strong>${scenario.demoResult}</div>` : ""}
+              </div>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `);
+}
+
+function openSharedZoneModal(zone: SharedZone): void {
+  stopSpeechNarration(false);
+  if (modalTimer !== null) {
+    window.clearTimeout(modalTimer);
+    modalTimer = null;
+  }
+  if (modalOpenFrame !== null) {
+    window.cancelAnimationFrame(modalOpenFrame);
+    modalOpenFrame = null;
+  }
+  modalDepartment = null;
+  modalSharedZone = zone;
+  updatePresenterSceneContext(`shared-zone:${zone.id}`, { zoneId: zone.id });
+  modal.classList.remove("hidden", "is-closing");
+  modal.classList.remove("is-open");
+  modalOpenFrame = window.requestAnimationFrame(() => {
+    modal.classList.add("is-open");
+    modalOpenFrame = null;
+  });
+  syncModalUi();
+  updatePresenterBrief();
+  renderSpeakerNotesWindow();
+  updateBrowserRouteHash(buildSharedZoneRouteHash(zone.id));
+  renderSharedZoneModal(zone);
+}
+
 function openAreaGuideModal(guide: AreaGuide): void {
   clearMobileMoveTarget();
+  triggerInteractionFlash();
   setLastEvent(`靠近 ${guide.label}`);
   if (guide.target.type === "department") {
     openDepartmentModal(guide.target.department);
@@ -7350,25 +9990,57 @@ function openAreaGuideModal(guide: AreaGuide): void {
 }
 
 function closeModal(): void {
-  modal.classList.add("hidden");
-  modalDepartment = null;
-  modalSharedZone = null;
+  if (modal.classList.contains("hidden")) {
+    return;
+  }
+
+  stopSpeechNarration(false);
+  updateBrowserRouteHash("");
+
+  if (modalOpenFrame !== null) {
+    window.cancelAnimationFrame(modalOpenFrame);
+    modalOpenFrame = null;
+  }
+  modal.classList.remove("is-open");
+  modal.classList.add("is-closing");
+  if (modalTimer !== null) {
+    window.clearTimeout(modalTimer);
+  }
+
+  modalTimer = window.setTimeout(() => {
+    modal.classList.add("hidden");
+    modal.classList.remove("is-closing");
+    modalDepartment = null;
+    modalSharedZone = null;
+    clearPresenterSceneContext();
+    modalTimer = null;
+    syncModalUi();
+    updatePresenterBrief();
+    renderSpeakerNotesWindow();
+  }, MODAL_ANIMATION_DURATION_MS);
 }
 
 function openThankYouScreen(): void {
   clearMobileMoveTarget();
+  triggerInteractionFlash();
   closeModal();
+  closeRouteError(false);
+  updateBrowserRouteHash("");
   thankYouScreenState.active = true;
   syncThankYouScreenUi();
   thankYouRestartButton.focus();
   setLastEvent(pickUiText("从左侧出口离开办公室", "Left the office through the west exit"));
+  persistOfficeState();
 }
 
 function closeThankYouScreen(): void {
   thankYouScreenState.active = false;
+  closeRouteError(false);
+  updateBrowserRouteHash("");
   syncThankYouScreenUi();
   thankYouRestartButton.blur();
   setLastEvent(pickUiText("返回办公室继续漫游", "Returned to the office walkthrough"));
+  persistOfficeState();
 }
 
 function showToast(message: string): void {
@@ -7396,11 +10068,56 @@ function updateClockPanel(): void {
     weekday: "short",
   });
   dashboardLastEvent.textContent = `${getLocalizedString("dashboard.lastEventPrefix")}${translateRuntimeCopy(lastEventText)}`;
+  updatePresenterCountdown();
+  updatePresenterBrief();
+  renderSpeakerNotesWindow();
+  renderDebugHud();
 }
 
 function setLastEvent(message: string): void {
   lastEventText = message;
   updateClockPanel();
+}
+
+function renderThesisPoint(): void {
+  if (currentThesisPoints.length === 0) {
+    thesisList.innerHTML = "";
+    return;
+  }
+
+  const safeIndex = ((currentThesisPointIndex % currentThesisPoints.length) + currentThesisPoints.length) % currentThesisPoints.length;
+  thesisList.innerHTML = `<li>${currentThesisPoints[safeIndex]}</li>`;
+}
+
+function rotateThesisPoint(): void {
+  if (currentThesisPoints.length <= 1) {
+    renderThesisPoint();
+    return;
+  }
+
+  currentThesisPointIndex = (currentThesisPointIndex + 1) % currentThesisPoints.length;
+  renderThesisPoint();
+}
+
+function syncModalUi(): void {
+  const modalVisible = !modal.classList.contains("hidden");
+  document.body.classList.toggle("modal-open", modalVisible);
+  modal.setAttribute("aria-hidden", String(!modalVisible));
+}
+
+function triggerInteractionFlash(): void {
+  interactionFlash.classList.remove("is-active");
+  void interactionFlash.offsetWidth;
+  interactionFlash.classList.add("is-active");
+
+  if (interactionFlashTimer !== null) {
+    window.clearTimeout(interactionFlashTimer);
+  }
+
+  interactionFlashTimer = window.setTimeout(() => {
+    interactionFlash.classList.remove("is-active");
+    interactionFlashTimer = null;
+  }, INTERACTION_FLASH_DURATION_MS);
 }
 
 function jitterPoint(point: Point, spreadX: number, spreadY = spreadX): Point {
@@ -7768,6 +10485,7 @@ function dismissCentralMeeting(): void {
 
 function toggleCentralMeeting(): void {
   clearMobileMoveTarget();
+  triggerInteractionFlash();
   if (meetingState.active) {
     dismissCentralMeeting();
     return;
@@ -8202,10 +10920,14 @@ function updateStats(): void {
   const impactScore = allScenarios
     .filter((scenario) => completedScenarios.has(scenario.id))
     .reduce((sum, scenario) => sum + scenario.impactScore, 0);
+  const completionProgress = allScenarios.length === 0 ? 0 : Math.round((completedCount / allScenarios.length) * 100);
 
-  completedCountElement.textContent = `${completedCount}/${allScenarios.length}`;
-  impactScoreElement.textContent = String(impactScore);
-  insightCountElement.textContent = String(collectedInsights.size);
+  completedCountElement.textContent = `${formatLocalizedNumber(completedCount)}/${formatLocalizedNumber(allScenarios.length)}`;
+  completionProgressText.textContent = `${completionProgress}%`;
+  completionProgressFill.style.width = `${completionProgress}%`;
+  impactScoreElement.textContent = formatLocalizedNumber(impactScore);
+  insightCountElement.textContent = formatLocalizedNumber(collectedInsights.size);
+  renderThankYouDebrief();
 
   if (completedCount >= 18) {
     executionStageElement.textContent = getExecutionStageLabel("network");
@@ -8216,10 +10938,15 @@ function updateStats(): void {
   } else {
     executionStageElement.textContent = getExecutionStageLabel("assist");
   }
+
+  if (dashboardOverlayState.active) {
+    renderDashboardOverlay();
+  }
 }
 
 function collectInsight(node: InsightNode): void {
   clearMobileMoveTarget();
+  triggerInteractionFlash();
   const wasFullyCompleted = isDepartmentFullyCompleted(node.department);
   collectedInsights.add(node.id);
   updateStats();
@@ -8235,6 +10962,7 @@ function collectInsight(node: InsightNode): void {
       `<strong>${node.department.shortName}</strong> captured insight: ${node.fact}`
     )
   );
+  persistOfficeState();
 }
 
 function runScenario(scenarioId: string, department: SceneDepartment): void {
@@ -8243,6 +10971,7 @@ function runScenario(scenarioId: string, department: SceneDepartment): void {
     return;
   }
 
+  triggerInteractionFlash();
   const wasFullyCompleted = isDepartmentFullyCompleted(department);
   completedScenarios.add(scenario.id);
   updateStats();
@@ -8262,6 +10991,7 @@ function runScenario(scenarioId: string, department: SceneDepartment): void {
       `<strong>${department.shortName}</strong> ran scene: ${scenario.title}`
     )
   );
+  persistOfficeState();
 }
 
 function openExternalTerminal(terminal: ExternalTerminal): void {
@@ -8304,6 +11034,7 @@ function openExternalTerminal(terminal: ExternalTerminal): void {
 
 function openTerminal(terminal: OfficeTerminal): void {
   clearMobileMoveTarget();
+  triggerInteractionFlash();
   if (terminal.kind === "external") {
     openExternalTerminal(terminal);
     return;
@@ -8327,6 +11058,7 @@ function teleportToDepartment(department: SceneDepartment): void {
       `<strong>${department.shortName}</strong> switched in, and the desk session is ready.`
     )
   );
+  persistOfficeState();
 }
 
 function teleportToSharedZone(zone: SharedZone): void {
@@ -8344,6 +11076,7 @@ function teleportToSharedZone(zone: SharedZone): void {
       `<strong>${zone.label}</strong> switched in, and the shared-zone route is now focused.`
     )
   );
+  persistOfficeState();
 }
 
 function isTitleScreenActive(): boolean {
@@ -8356,6 +11089,9 @@ function isThankYouScreenActive(): boolean {
 
 function syncTitleScreenUi(): void {
   const isLanguagePhase = titleScreenState.phase === "language";
+  const nextStartCopy = isLanguagePhase
+    ? "先选择界面语言，再进入开始画面。下一页仍可继续切换。 / Choose the UI language first, then continue to the start screen. You can still switch it on the next page."
+    : getLocalizedString("start.copy");
   document.body.classList.toggle("title-screen-active", titleScreenState.active);
   startScreen.setAttribute("aria-hidden", String(!titleScreenState.active));
   startScreen.dataset.phase = titleScreenState.phase;
@@ -8368,8 +11104,6 @@ function syncTitleScreenUi(): void {
     startKicker.textContent = "界面语言 / UI Language";
     setStartTitleLines("选择语言", "CHOOSE UI", "LANGUAGE");
     startSubtitle.textContent = "中文 / English";
-    startCopy.textContent =
-      "先选择界面语言，再进入开始画面。下一页仍可继续切换。 / Choose the UI language first, then continue to the start screen. You can still switch it on the next page.";
     startLanguageLabel.textContent = "界面语言 / UI Language";
   } else {
     startBadge.textContent = getLocalizedString("start.badge");
@@ -8380,10 +11114,12 @@ function syncTitleScreenUi(): void {
       getLocalizedString("start.titleBottom")
     );
     startSubtitle.textContent = getLocalizedString("start.subtitle");
-    startCopy.textContent = getLocalizedString("start.copy");
     startButton.textContent = getLocalizedString("start.button");
     startLanguageLabel.textContent = getLocalizedString("start.languageLabel");
   }
+
+  startCopy.textContent = nextStartCopy;
+  startCopy.classList.toggle("hidden", nextStartCopy.trim().length === 0);
 
   startLanguageZhButton.classList.toggle("is-active", currentUiLanguage === "zh-CN");
   startLanguageZhButton.setAttribute("aria-pressed", String(currentUiLanguage === "zh-CN"));
@@ -8396,12 +11132,179 @@ function selectTitleScreenLanguage(language: UiLanguage): void {
   titleScreenState.phase = "intro";
   applyUiLanguage();
   syncTitleScreenUi();
+  persistOfficeState();
+}
+
+function syncIntroCinematicUi(): void {
+  document.body.classList.toggle("intro-cinematic-active", introCinematicState.active);
+}
+
+function getCompanionLobsterMessage(): string {
+  const completedDepartments = getCompletedDepartmentCount();
+  if (completedDepartments === 0) {
+    if (!completedSharedZones.has("reception")) {
+      return pickUiText("先看前台三张工单，别急着聊模型。", "Start with the three reception tickets, not the model branding.");
+    }
+
+    const firstDepartment = getStrategicDepartmentCandidate();
+    return firstDepartment
+      ? pickUiText(
+          `前台这步讲完了，下一站去 ${firstDepartment.shortName} 看第一个真实场景。`,
+          `Reception is done. Head to ${firstDepartment.shortName} for the first real scene.`
+        )
+      : pickUiText(
+          "前台这步讲完了，开始进部门看真实工作。",
+          "Reception is done. Move into the departments and start with the real work."
+        );
+  }
+  if (completedDepartments < 3) {
+    return pickUiText(`你已经看了 ${completedDepartments} 个场景，沿着金色箭头继续。`, `You have seen ${completedDepartments} scenes. Keep following the amber path.`);
+  }
+  if (completedDepartments >= departments.length) {
+    return pickUiText("该收尾了，左侧出口那边见。", "Time to land the ending. Meet me at the west exit.");
+  }
+  const currentTarget = getPromptTarget();
+  if (currentTarget?.type === "terminal" && currentTarget.value.kind === "scenario") {
+    return pickUiText(
+      `${currentTarget.value.department.shortName} 这个工位，先看活再判断工具。`,
+      `At ${currentTarget.value.department.shortName}, read the work first and judge the tool second.`
+    );
+  }
+  if (activeSharedZoneId === "cafeteria") {
+    return pickUiText("餐厅那边是终局工具箱，别忘了回来做收尾。", "The cafeteria is the final tool bench. Come back here for the close.");
+  }
+  return pickUiText(
+    `你已经看了 ${completedDepartments} 个场景，别忘了餐厅还有七工具结尾。`,
+    `You have covered ${completedDepartments} scenes. Do not forget the seven-tool finale in the cafeteria.`
+  );
+}
+
+function scheduleNextCompanionLobsterMessage(): void {
+  lobsterCompanionState.cooldown = randomBetween(
+    LOBSTER_COMPANION_MESSAGE_MIN_INTERVAL,
+    LOBSTER_COMPANION_MESSAGE_MAX_INTERVAL
+  );
+}
+
+function showCompanionLobsterMessage(message = getCompanionLobsterMessage()): void {
+  lobsterCompanionState.message = message;
+  lobsterCompanionState.visibleTimer = LOBSTER_COMPANION_MESSAGE_DURATION;
+  lobsterCompanionState.accent = completedScenarios.size >= departments.length ? "#ffcf47" : "#ffb703";
+  scheduleNextCompanionLobsterMessage();
+}
+
+function updateCompanionLobster(delta: number): void {
+  if (introCinematicState.active || isTitleScreenActive() || isThankYouScreenActive()) {
+    lobsterCompanionState.visibleTimer = 0;
+    return;
+  }
+
+  const target = getPromptTarget();
+  if (target) {
+    const targetPosition = getInteractionTargetPosition(target);
+    lobsterCompanionState.facing = Math.atan2(targetPosition.y - player.y, targetPosition.x - player.x);
+  } else {
+    lobsterCompanionState.facing = lerpAngle(
+      lobsterCompanionState.facing,
+      Math.sin(performance.now() / 1200) > 0 ? Math.PI * 0.88 : Math.PI * 1.12,
+      clamp(delta * 3, 0, 1)
+    );
+  }
+
+  if (lobsterCompanionState.visibleTimer > 0) {
+    lobsterCompanionState.visibleTimer = Math.max(0, lobsterCompanionState.visibleTimer - delta);
+    return;
+  }
+
+  lobsterCompanionState.cooldown -= delta;
+  if (lobsterCompanionState.cooldown <= 0) {
+    showCompanionLobsterMessage();
+  }
+}
+
+function startIntroCinematic(): void {
+  introCinematicState.active = true;
+  introCinematicState.time = 0;
+  player.x = introCinematicState.heroStart.x;
+  player.y = introCinematicState.heroStart.y;
+  player.facing = 0;
+  player.step = 0;
+  player.idleTime = 0;
+  camera.targetZoom = isCompactViewport() ? 1.02 : 0.92;
+  lobsterCompanionState.message = "";
+  lobsterCompanionState.visibleTimer = 0;
+  lobsterCompanionState.cooldown = 2.8;
+  syncIntroCinematicUi();
+  setLastEvent(pickUiText("办公室入场 cinematic 开始", "Office intro cinematic started"));
+}
+
+function updateIntroCinematic(delta: number): void {
+  introCinematicState.time = Math.min(introCinematicState.duration, introCinematicState.time + delta);
+  const heroVisibleProgress = clamp(
+    (introCinematicState.time - INTRO_CINEMATIC_HERO_START_TIME) /
+      Math.max(0.001, INTRO_CINEMATIC_ARROW_TIME - INTRO_CINEMATIC_HERO_START_TIME),
+    0,
+    1
+  );
+
+  if (heroVisibleProgress > 0) {
+    const position = lerpPoint(
+      introCinematicState.heroStart,
+      introCinematicState.heroEnd,
+      easeInOutCubic(heroVisibleProgress)
+    );
+    const previous = { x: player.x, y: player.y };
+    player.x = position.x;
+    player.y = position.y;
+    player.facing = Math.atan2(
+      introCinematicState.heroEnd.y - introCinematicState.heroStart.y,
+      introCinematicState.heroEnd.x - introCinematicState.heroStart.x
+    );
+    const movedDistance = Math.hypot(player.x - previous.x, player.y - previous.y);
+    if (movedDistance > 0.01) {
+      player.step += delta * 14;
+      player.idleTime = 0;
+    } else {
+      player.step = 0;
+      player.idleTime += delta;
+    }
+  } else {
+    player.x = introCinematicState.heroStart.x;
+    player.y = introCinematicState.heroStart.y;
+    player.step = 0;
+    player.idleTime = 0;
+  }
+
+  if (introCinematicState.time >= introCinematicState.duration) {
+    introCinematicState.active = false;
+    player.x = introCinematicState.heroEnd.x;
+    player.y = introCinematicState.heroEnd.y;
+    player.facing = Math.atan2(
+      introCinematicState.guidePoint.y - player.y,
+      introCinematicState.guidePoint.x - player.x
+    );
+    player.step = 0;
+    player.idleTime = 0;
+    camera.targetZoom = getMinZoom();
+    syncIntroCinematicUi();
+    showCompanionLobsterMessage(
+      pickUiText("这是前台，先从三张工单开始。", "This is reception. Start with the three tickets.")
+    );
+    maybeShowOnboarding();
+    setLastEvent(pickUiText("办公室入场 cinematic 完成", "Office intro cinematic finished"));
+    persistOfficeState();
+  }
 }
 
 function enterTitleExperience(): void {
+  presenterCountdownState.startedAt = null;
+  presenterMilestonesShown.clear();
   titleScreenState.active = false;
   titleScreenState.phase = "intro";
   thankYouScreenState.active = false;
+  closeRouteError(false);
+  updateBrowserRouteHash("");
+  closeHelpOverlay();
   keys.clear();
   touchControls.clear();
   clearMobileMoveTarget();
@@ -8413,13 +11316,16 @@ function enterTitleExperience(): void {
   applyUiLanguage();
   syncTitleScreenUi();
   syncThankYouScreenUi();
+  startIntroCinematic();
   lastFrameTime = performance.now();
+  persistOfficeState();
 }
 
 function syncUiVisibility(): void {
   document.body.classList.toggle("ui-minimal", uiMinimal);
   uiToggleButton.setAttribute("aria-pressed", String(uiMinimal));
   uiToggleButton.textContent = uiMinimal ? getLocalizedString("uiToggle.show") : getLocalizedString("uiToggle.hide");
+  maybeStartPresenterCountdown();
 }
 
 function worldToScreen(x: number, y: number): Point {
@@ -8675,6 +11581,47 @@ function drawCorridorSprintLane(floor: Rect, laneY: number, elapsed: number): vo
   drawSceneRouteStepBadge({ x: endX, y: sprintY - 10 }, "S", accent, true);
 }
 
+function drawReceptionGuideArrow(elapsed: number): void {
+  if (!receptionZone) {
+    return;
+  }
+
+  const anchor = worldToScreen(
+    receptionZone.walkwayRect.left + receptionZone.walkwayRect.width + 18,
+    receptionZone.walkwayRect.top + receptionZone.walkwayRect.height / 2
+  );
+  const pulse = 0.5 + Math.sin(elapsed * 4.2) * 0.5;
+  surfaceContext.save();
+  surfaceContext.translate(Math.round(anchor.x), Math.round(anchor.y));
+  surfaceContext.fillStyle = withAlpha("#ffb703", 0.16 + pulse * 0.14);
+  surfaceContext.fillRect(-18, -9, 36, 18);
+  surfaceContext.fillStyle = "#09111d";
+  surfaceContext.beginPath();
+  surfaceContext.moveTo(-10, -5);
+  surfaceContext.lineTo(3, -5);
+  surfaceContext.lineTo(3, -9);
+  surfaceContext.lineTo(13, 0);
+  surfaceContext.lineTo(3, 9);
+  surfaceContext.lineTo(3, 5);
+  surfaceContext.lineTo(-10, 5);
+  surfaceContext.closePath();
+  surfaceContext.fill();
+  surfaceContext.fillStyle = "#ffb703";
+  surfaceContext.beginPath();
+  surfaceContext.moveTo(-8, -4);
+  surfaceContext.lineTo(4, -4);
+  surfaceContext.lineTo(4, -7);
+  surfaceContext.lineTo(11, 0);
+  surfaceContext.lineTo(4, 7);
+  surfaceContext.lineTo(4, 4);
+  surfaceContext.lineTo(-8, 4);
+  surfaceContext.closePath();
+  surfaceContext.fill();
+  surfaceContext.fillStyle = withAlpha("#fff7d6", 0.84);
+  surfaceContext.fillRect(-5, -1, 9, 2);
+  surfaceContext.restore();
+}
+
 function drawContactShadow(rect: Rect, alpha = 0.18, inset = 4): void {
   const clampedInset = Math.max(1, Math.min(inset, Math.floor(rect.width / 3)));
   const width = Math.max(4, rect.width - clampedInset * 2);
@@ -8829,6 +11776,7 @@ function drawCorridor(elapsed: number): void {
   }
   drawCorridorFlowRibbon(floor, laneY, elapsed);
   drawCorridorSprintLane(floor, laneY, elapsed);
+  drawReceptionGuideArrow(elapsed);
   drawPixelFrame(surfaceContext, introRug, "#314667", "#b4f263", "#0a0c14", 2);
   surfaceContext.fillStyle = "#5a78a5";
   surfaceContext.fillRect(introRug.left + 4, introRug.top + 4, introRug.width - 8, introRug.height - 8);
@@ -11274,11 +14222,11 @@ function drawNpcSpeechBubble(
 
 function drawStatusDot(department: SceneDepartment, room: Rect, state: DepartmentVisualState): void {
   const color = state === "busy"
-    ? "#f4cf7d"
+    ? "#ffb703"
     : state === "online"
       ? "#89d0ff"
       : state === "done"
-        ? "#8be08c"
+        ? "#ffcf47"
         : "#9197aa";
   surfaceContext.fillStyle = "#0a0c14";
   surfaceContext.fillRect(room.left + room.width - 9, room.top + room.height - 9, 7, 7);
@@ -11303,11 +14251,11 @@ function drawTerminal(
   const highlighted = hovered || isLedServiceWithinDiscoveryRange(terminal);
   const pulse = 0.55 + Math.sin(elapsed * 3 + terminal.pulseOffset) * 0.2;
   const accent = ledService
-    ? (highlighted ? "#f4cf7d" : "#d9b96a")
+    ? (highlighted ? "#ffb703" : "#d9b96a")
     : external
-      ? (hovered ? "#f4cf7d" : "#89d0ff")
+      ? (hovered ? "#ffb703" : "#89d0ff")
     : done
-      ? "#8be08c"
+      ? "#ffcf47"
       : hovered
         ? "#89d0ff"
         : terminal.department.accent;
@@ -11340,7 +14288,9 @@ function drawTerminal(
   surfaceContext.fillStyle = withAlpha(accent, pulse);
   surfaceContext.fillRect(baseRect.left + 2, baseRect.top + 2, baseRect.width - 4, 3);
   surfaceContext.fillStyle = "#f4f7ff";
-  surfaceContext.font = ledService ? "bold 5px Monaco, 'Courier New', monospace" : "bold 6px Monaco, 'Courier New', monospace";
+  surfaceContext.font = ledService
+    ? 'bold 5px "JetBrains Mono", "IBM Plex Mono", monospace'
+    : 'bold 6px "JetBrains Mono", "IBM Plex Mono", monospace';
   surfaceContext.textAlign = "center";
   surfaceContext.textBaseline = "middle";
   surfaceContext.fillText(
@@ -11353,7 +14303,7 @@ function drawTerminal(
 function drawInsightNode(node: InsightNode, elapsed: number): void {
   const position = worldToScreen(node.position.x, node.position.y);
   const collected = collectedInsights.has(node.id);
-  const glow = collected ? "#8be08c" : "#ffde7a";
+  const glow = collected ? "#ffcf47" : "#ffde7a";
   const highlighted = hoveredInsight?.id === node.id;
   const pulse = Math.sin(elapsed * 4 + node.pulseOffset) > 0 ? 1 : 0;
 
@@ -11437,17 +14387,25 @@ function drawHdSceneTag(
 ): void {
   const localizedTitle = translateRuntimeCopy(title);
   const uiScale = Math.min(window.devicePixelRatio || 1, 2);
-  const titleSize = (options.compact ? 11 : 12) * uiScale;
+  const anchorOnCanvas = surfacePointToCanvas(anchor, transform);
+  const topBand = anchorOnCanvas.y <= 56 * uiScale;
+  const compact = Boolean(options.compact || topBand);
+  const titleSize = (compact ? 11 : 12) * uiScale;
   const subtitleSize = 10 * uiScale;
-  const lineHeight = (options.compact ? 14 : 16) * uiScale;
-  const paddingX = (options.compact ? 10 : 12) * uiScale;
-  const paddingY = (options.compact ? 6 : 8) * uiScale;
+  const lineHeight = (compact ? 14 : 16) * uiScale;
+  const paddingX = (compact ? 10 : 12) * uiScale;
+  const paddingY = (compact ? 6 : 8) * uiScale;
   const borderWidth = Math.max(1.5, Math.round(uiScale * 1.5));
   const shadowOffset = Math.max(3, Math.round(uiScale * 3));
   const margin = 8 * uiScale;
-  const anchorOnCanvas = surfacePointToCanvas(anchor, transform);
+  const topSafeArea = topBand ? Math.max(margin, 28 * uiScale) : margin;
   const subtitle = options.subtitle?.trim();
   const localizedSubtitle = subtitle ? translateRuntimeCopy(subtitle) : "";
+  const displaySubtitle = localizedSubtitle
+    ? topBand
+      ? shortenIndicatorTitle(localizedSubtitle, currentUiLanguage === "en" ? 16 : 8)
+      : localizedSubtitle
+    : "";
 
   sceneContext.save();
   sceneContext.globalAlpha = options.alpha ?? 1;
@@ -11456,14 +14414,14 @@ function drawHdSceneTag(
   sceneContext.font = `600 ${titleSize}px "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif`;
   const titleWidth = sceneContext.measureText(localizedTitle).width;
   let subtitleWidth = 0;
-  if (localizedSubtitle) {
+  if (displaySubtitle) {
     sceneContext.font = `500 ${subtitleSize}px "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif`;
-    subtitleWidth = sceneContext.measureText(localizedSubtitle).width;
+    subtitleWidth = sceneContext.measureText(displaySubtitle).width;
   }
 
   const width = Math.ceil(Math.max(titleWidth, subtitleWidth) + paddingX * 2);
-  const lineCount = localizedSubtitle ? 2 : 1;
-  const height = Math.ceil(lineCount * lineHeight + paddingY * 2 - (localizedSubtitle ? 2 * uiScale : 0));
+  const lineCount = displaySubtitle ? 2 : 1;
+  const height = Math.ceil(lineCount * lineHeight + paddingY * 2 - (displaySubtitle ? 2 * uiScale : 0));
   const placement = options.reservedRects
     ? resolveOverlayPlacement(
         {
@@ -11474,11 +14432,20 @@ function drawHdSceneTag(
         },
         options.reservedRects,
         margin,
-        Math.max(8, Math.round(lineHeight * 0.8))
+        Math.max(8, Math.round(lineHeight * 0.8)),
+        topBand ? 3 : 10,
+        topBand ? 12 : 6,
+        Math.max(18, Math.round(Math.min(width * 0.18, 40))),
+        topBand ? 6 : 3,
+        topSafeArea
       )
     : {
         left: clamp(anchorOnCanvas.x - width / 2, margin, canvas.width - width - margin),
-        top: Math.max(margin, anchorOnCanvas.y + (options.offsetY ?? 0) * uiScale - height / 2),
+        top: clamp(
+          anchorOnCanvas.y + (options.offsetY ?? 0) * uiScale - height / 2,
+          topSafeArea,
+          canvas.height - height - margin
+        ),
         width,
         height,
       };
@@ -11497,10 +14464,10 @@ function drawHdSceneTag(
   sceneContext.fillStyle = adjustHex(accent, -36);
   sceneContext.fillText(localizedTitle, left + width / 2, top + paddingY + lineHeight / 2);
 
-  if (localizedSubtitle) {
+  if (displaySubtitle) {
     sceneContext.font = `500 ${subtitleSize}px "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif`;
     sceneContext.fillStyle = "#33405c";
-    sceneContext.fillText(localizedSubtitle, left + width / 2, top + paddingY + lineHeight * 1.45);
+    sceneContext.fillText(displaySubtitle, left + width / 2, top + paddingY + lineHeight * 1.45);
   }
   sceneContext.restore();
 }
@@ -11850,7 +14817,7 @@ function drawSceneLabelOverlays(transform: SurfaceDrawTransform, reservedRects: 
     })
   ) {
     const podiumAccent = meetingState.active
-      ? (hoveredPodium ? "#ffe3a0" : "#f4cf7d")
+      ? (hoveredPodium ? "#ffe3a0" : "#ffb703")
       : (hoveredPodium ? "#b7e6ff" : "#89d0ff");
     drawHdSceneTag(
       podiumAnchor,
@@ -11929,7 +14896,7 @@ function drawSceneLabelOverlays(transform: SurfaceDrawTransform, reservedRects: 
       : shouldShowNpcRoleLabel(npc)
         ? npc.role
         : "";
-    drawHdSceneTag(anchor, transform, npc.name, speakerActive ? "#f4cf7d" : npc.stationary ? "#6ca57a" : "#6f89c8", {
+    drawHdSceneTag(anchor, transform, npc.name, speakerActive ? "#ffb703" : npc.stationary ? "#6ca57a" : "#6f89c8", {
       subtitle,
       offsetY: -24,
       compact: true,
@@ -12529,6 +15496,8 @@ function drawSharedZoneDecor(zone: SharedZone, room: Rect, elapsed: number): voi
     drawAmbientRoomShell(room, floorRect, zone.accent, elapsed, room.left + room.top);
     drawFloorWear(floorRect, zone.accent, room.left + room.top);
   };
+  const highlight = "#ffb703";
+  const warmHighlight = "#ffcf47";
 
   if (zone.kind === "reception") {
     drawFloorBase("#5f677d", "#566077");
@@ -12541,8 +15510,32 @@ function drawSharedZoneDecor(zone: SharedZone, room: Rect, elapsed: number): voi
     drawPixelFrame(surfaceContext, rug, "#4b5f86", "#25344e", "#090b12", 1);
     surfaceContext.fillStyle = "#6e87b2";
     surfaceContext.fillRect(rug.left + 4, rug.top + 4, rug.width - 8, rug.height - 8);
-    surfaceContext.fillStyle = "#f4cf7d";
+    surfaceContext.fillStyle = highlight;
     surfaceContext.fillRect(rug.left + 8, rug.top + 8, rug.width - 16, 2);
+    const dispatchBoard = localRect(0.10, 0.04, 0.30, 0.12);
+    drawPixelFrame(surfaceContext, dispatchBoard, "#8a6547", "#4f3727", "#090b12", 1);
+    surfaceContext.fillStyle = "#d1b288";
+    surfaceContext.fillRect(dispatchBoard.left + 3, dispatchBoard.top + 3, dispatchBoard.width - 6, dispatchBoard.height - 6);
+    surfaceContext.fillStyle = highlight;
+    surfaceContext.fillRect(dispatchBoard.left + 5, dispatchBoard.top + 4, dispatchBoard.width - 10, 2);
+    const noticeColors = ["#ff6b6b", highlight, "#89d0ff"] as const;
+    const notePositions = [
+      localRect(0.14, 0.06, 0.08, 0.07),
+      localRect(0.24, 0.05, 0.08, 0.08),
+      localRect(0.30, 0.08, 0.07, 0.07),
+    ];
+    notePositions.forEach((note, index) => {
+      const bob = index === 0 ? 0 : Math.round(Math.sin(elapsed * 2.4 + index) * 1.5);
+      const pinX = note.left + Math.round(note.width / 2);
+      drawPixelFrame(surfaceContext, note, "#fff5e3", "#d9c9aa", "#090b12", 1);
+      surfaceContext.fillStyle = noticeColors[index];
+      surfaceContext.fillRect(note.left + 2, note.top + 2 + bob, note.width - 4, note.height - 4);
+      surfaceContext.fillStyle = withAlpha("#201a14", 0.32);
+      surfaceContext.fillRect(note.left + 4, note.top + 5 + bob, note.width - 8, 1);
+      surfaceContext.fillRect(note.left + 4, note.top + 8 + bob, note.width - 10, 1);
+      surfaceContext.fillStyle = "#fff4ce";
+      surfaceContext.fillRect(pinX - 1, note.top + 1 + bob, 3, 2);
+    });
     const queueA = localRect(0.18, 0.40, 0.18, 0.04);
     const queueB = localRect(0.44, 0.40, 0.18, 0.04);
     surfaceContext.fillStyle = "#d9ecff";
@@ -12551,14 +15544,16 @@ function drawSharedZoneDecor(zone: SharedZone, room: Rect, elapsed: number): voi
     surfaceContext.fillStyle = "#89d0ff";
     surfaceContext.fillRect(queueA.left + 4, queueA.top + 1, queueA.width - 8, 1);
     surfaceContext.fillRect(queueB.left + 4, queueB.top + 1, queueB.width - 8, 1);
-    const kiosk = localRect(0.72, 0.20, 0.10, 0.26);
+    const kiosk = localRect(0.72, 0.06, 0.10, 0.18);
     drawPixelFrame(surfaceContext, kiosk, "#dce4f2", "#6a7d9b", "#090b12", 1);
     surfaceContext.fillStyle = pulseColor(elapsed + room.left * 0.02, "#89d0ff", "#f7fbff");
     surfaceContext.fillRect(kiosk.left + 3, kiosk.top + 4, kiosk.width - 6, kiosk.height - 8);
+    surfaceContext.fillStyle = withAlpha(highlight, 0.28);
+    surfaceContext.fillRect(kiosk.left - 2, kiosk.top + 6, kiosk.width + 4, kiosk.height - 12);
     const waitingPad = localRect(0.56, 0.66, 0.18, 0.06);
     surfaceContext.fillStyle = "#3c4d69";
     surfaceContext.fillRect(waitingPad.left, waitingPad.top, waitingPad.width, waitingPad.height);
-    surfaceContext.fillStyle = "#f4cf7d";
+    surfaceContext.fillStyle = highlight;
     surfaceContext.fillRect(waitingPad.left + 4, waitingPad.top + 2, waitingPad.width - 8, 2);
     const magazineStack = localRect(0.24, 0.70, 0.12, 0.08);
     drawPixelFrame(surfaceContext, magazineStack, "#dce4f2", "#6a7d9b", "#090b12", 1);
@@ -12566,8 +15561,18 @@ function drawSharedZoneDecor(zone: SharedZone, room: Rect, elapsed: number): voi
     surfaceContext.fillRect(magazineStack.left + 3, magazineStack.top + 2, magazineStack.width - 6, 2);
     surfaceContext.fillStyle = "#f08e72";
     surfaceContext.fillRect(magazineStack.left + 4, magazineStack.top + 5, magazineStack.width - 8, 1);
-    const bell = localRect(0.66, 0.28, 0.06, 0.06);
-    surfaceContext.fillStyle = "#f4cf7d";
+    const dispatchTray = localRect(0.54, 0.08, 0.10, 0.07);
+    drawPixelFrame(surfaceContext, dispatchTray, "#7b8aa4", "#45516a", "#090b12", 1);
+    surfaceContext.fillStyle = "#f9f3e7";
+    surfaceContext.fillRect(dispatchTray.left + 2, dispatchTray.top + 2, dispatchTray.width - 4, dispatchTray.height - 4);
+    surfaceContext.fillStyle = highlight;
+    surfaceContext.fillRect(dispatchTray.left + 3, dispatchTray.top + 3, dispatchTray.width - 6, 1);
+    surfaceContext.fillStyle = "#ff6b6b";
+    surfaceContext.fillRect(dispatchTray.left + 5, dispatchTray.top + 5, 4, 2);
+    surfaceContext.fillStyle = "#89d0ff";
+    surfaceContext.fillRect(dispatchTray.left + 10, dispatchTray.top + 5, 4, 2);
+    const bell = localRect(0.66, 0.08, 0.05, 0.05);
+    surfaceContext.fillStyle = warmHighlight;
     surfaceContext.fillRect(bell.left + 1, bell.top + 2, bell.width - 2, bell.height - 2);
     surfaceContext.fillStyle = "#fff4ce";
     surfaceContext.fillRect(bell.left + 2, bell.top + 1, bell.width - 4, 1);
@@ -12582,50 +15587,87 @@ function drawSharedZoneDecor(zone: SharedZone, room: Rect, elapsed: number): voi
   surfaceContext.fillStyle = "#e48d6f";
   surfaceContext.fillRect(menuBoard.left + 8, menuBoard.top + 9, menuBoard.width - 16, 2);
 
-  const aisle = localRect(0.14, 0.22, 0.12, 0.58);
+  const aisle = localRect(0.56, 0.28, 0.06, 0.44);
   drawPixelFrame(surfaceContext, aisle, "#8f7f70", "#5d5148", "#090b12", 1);
   surfaceContext.fillStyle = "#bba993";
   surfaceContext.fillRect(aisle.left + 3, aisle.top + 3, aisle.width - 6, aisle.height - 6);
-  surfaceContext.fillStyle = "#f4cf7d";
+  surfaceContext.fillStyle = highlight;
   for (let dash = 0; dash < 5; dash += 1) {
     surfaceContext.fillRect(aisle.left + Math.round(aisle.width / 2) - 1, aisle.top + 6 + dash * 12, 3, 6);
   }
 
   const divider = localRect(0.86, 0.22, 0.04, 0.56);
-  surfaceContext.fillStyle = pulseColor(elapsed + room.top * 0.02, "#f4cf7d", "#e9b96a");
+  surfaceContext.fillStyle = pulseColor(elapsed + room.top * 0.02, highlight, warmHighlight);
   surfaceContext.fillRect(divider.left, divider.top, divider.width, divider.height);
   const servingLight = localRect(0.16, 0.12, 0.26, 0.04);
   surfaceContext.fillStyle = "#544536";
   surfaceContext.fillRect(servingLight.left, servingLight.top, servingLight.width, servingLight.height);
-  surfaceContext.fillStyle = pulseColor(elapsed + room.left * 0.03, "#f7fbff", "#f4cf7d");
+  surfaceContext.fillStyle = pulseColor(elapsed + room.left * 0.03, "#f7fbff", warmHighlight);
   surfaceContext.fillRect(servingLight.left + 3, servingLight.top + 1, servingLight.width - 6, 2);
   const trayRail = localRect(0.18, 0.80, 0.22, 0.05);
   surfaceContext.fillStyle = "#c9b08f";
   surfaceContext.fillRect(trayRail.left, trayRail.top, trayRail.width, trayRail.height);
   surfaceContext.fillStyle = "#8e765f";
   surfaceContext.fillRect(trayRail.left + 3, trayRail.top + 1, trayRail.width - 6, 2);
-  const vending = localRect(0.72, 0.18, 0.12, 0.26);
+  const vending = localRect(0.85, 0.34, 0.08, 0.18);
   drawPixelFrame(surfaceContext, vending, "#cad4df", "#677690", "#090b12", 1);
   surfaceContext.fillStyle = "#89d0ff";
   surfaceContext.fillRect(vending.left + 4, vending.top + 5, vending.width - 8, 10);
   surfaceContext.fillStyle = "#dce6f6";
   surfaceContext.fillRect(vending.left + 5, vending.top + 18, vending.width - 10, 2);
-  surfaceContext.fillStyle = "#f4cf7d";
+  surfaceContext.fillStyle = highlight;
   surfaceContext.fillRect(vending.left + vending.width - 6, vending.top + vending.height - 8, 2, 2);
   const condiment = localRect(0.44, 0.16, 0.08, 0.10);
   drawPixelFrame(surfaceContext, condiment, "#c9d2df", "#677690", "#090b12", 1);
   surfaceContext.fillStyle = "#d65d4f";
   surfaceContext.fillRect(condiment.left + 3, condiment.top + 3, 2, condiment.height - 6);
-  surfaceContext.fillStyle = "#f4cf7d";
+  surfaceContext.fillStyle = highlight;
   surfaceContext.fillRect(condiment.left + 7, condiment.top + 3, 2, condiment.height - 6);
-  const trayStack = localRect(0.46, 0.74, 0.10, 0.08);
-  surfaceContext.fillStyle = "#dce4f2";
-  surfaceContext.fillRect(trayStack.left, trayStack.top, trayStack.width, 2);
-  surfaceContext.fillRect(trayStack.left + 1, trayStack.top + 3, trayStack.width - 2, 2);
-  surfaceContext.fillRect(trayStack.left + 2, trayStack.top + 6, trayStack.width - 4, 2);
-  surfaceContext.fillStyle = withAlpha("#6b4d36", 0.16);
-  surfaceContext.fillRect(trayStack.left + trayStack.width + 6, trayStack.top - 3, 3, 3);
-  surfaceContext.fillRect(trayStack.left + trayStack.width + 11, trayStack.top - 1, 2, 2);
+  const toolbox = localRect(0.26, 0.04, 0.18, 0.14);
+  drawPixelFrame(surfaceContext, toolbox, "#8a6547", "#5f4634", "#090b12", 1);
+  surfaceContext.fillStyle = "#6e513b";
+  surfaceContext.fillRect(toolbox.left + 2, toolbox.top + 2, toolbox.width - 4, toolbox.height - 4);
+  const toolboxLidHeight = Math.max(4, Math.round(toolbox.height * 0.34));
+  surfaceContext.fillStyle = "#9b7452";
+  surfaceContext.fillRect(toolbox.left + 2, toolbox.top - toolboxLidHeight + 2, toolbox.width - 4, toolboxLidHeight);
+  surfaceContext.fillStyle = highlight;
+  surfaceContext.fillRect(toolbox.left + 6, toolbox.top - toolboxLidHeight + 5, toolbox.width - 12, 2);
+  const iconStartX = toolbox.left + 6;
+  const iconStartY = toolbox.top + 5;
+  const iconGap = 8;
+  const toolIcons = [
+    "#dce6f6",
+    highlight,
+    "#89d0ff",
+    "#ff6b6b",
+    "#dce6f6",
+    "#89d0ff",
+    "#ff6b6b",
+  ] as const;
+  toolIcons.forEach((color, index) => {
+    const iconX = iconStartX + (index % 4) * iconGap;
+    const iconY = iconStartY + Math.floor(index / 4) * 10;
+    surfaceContext.fillStyle = color;
+    surfaceContext.fillRect(iconX, iconY, 4, 4);
+    if (index === 0) {
+      surfaceContext.fillRect(iconX + 4, iconY + 1, 3, 2);
+    } else if (index === 1) {
+      surfaceContext.fillRect(iconX + 1, iconY + 4, 2, 3);
+    } else if (index === 2) {
+      surfaceContext.fillRect(iconX + 5, iconY + 1, 2, 2);
+      surfaceContext.fillRect(iconX + 5, iconY + 4, 2, 2);
+    } else if (index === 3) {
+      surfaceContext.fillRect(iconX + 4, iconY + 1, 2, 4);
+    } else if (index === 4) {
+      surfaceContext.fillRect(iconX + 5, iconY + 5, 2, 2);
+    } else if (index === 5) {
+      surfaceContext.fillRect(iconX + 4, iconY + 2, 3, 1);
+      surfaceContext.fillRect(iconX + 5, iconY + 4, 2, 1);
+    } else {
+      surfaceContext.fillRect(iconX + 1, iconY + 4, 4, 2);
+      surfaceContext.fillRect(iconX + 5, iconY + 2, 1, 2);
+    }
+  });
 }
 
 function pulseColor(time: number, primary: string, secondary: string): string {
@@ -12968,7 +16010,7 @@ function drawNpcSprite(
   surfaceContext.fillRect(x + 1, y + 6, 3, 5);
 }
 
-function drawFallbackPlayerSprite(anchor: Point, facing: FacingDirection, bob: number): void {
+function drawFallbackPlayerSprite(anchor: Point, facing: FacingDirection, bob: number, walkStride = 0, idleBreath = 0): void {
   const x = Math.round(anchor.x);
   const y = Math.round(anchor.y + bob);
   const skin = "#f0d7c1";
@@ -12978,31 +16020,35 @@ function drawFallbackPlayerSprite(anchor: Point, facing: FacingDirection, bob: n
   const scarf = "#f0c94d";
   const trim = "#f3f5f8";
   const boots = "#232734";
+  const coatLift = Math.round(idleBreath);
+  const stride = walkStride;
+  const nearLegShift = stride > 0 ? 1 : stride < 0 ? -1 : 0;
+  const farLegShift = -nearLegShift;
 
   drawGroundShadow(x, y, 14);
   drawHeroMarker(x, y);
 
   if (facing === "up") {
     surfaceContext.fillStyle = trim;
-    surfaceContext.fillRect(x - 5, y - 4, 10, 2);
+    surfaceContext.fillRect(x - 5, y - 4 - coatLift, 10, 2);
     surfaceContext.fillStyle = hair;
     surfaceContext.fillRect(x - 4, y - 9, 8, 6);
     surfaceContext.fillStyle = coat;
-    surfaceContext.fillRect(x - 5, y - 3, 10, 10);
+    surfaceContext.fillRect(x - 5, y - 3 - coatLift, 10, 10);
     surfaceContext.fillStyle = scarf;
-    surfaceContext.fillRect(x - 4, y - 2, 8, 2);
+    surfaceContext.fillRect(x - 4, y - 2 - coatLift, 8, 2);
     surfaceContext.fillStyle = coatShadow;
-    surfaceContext.fillRect(x - 1, y - 1, 2, 7);
+    surfaceContext.fillRect(x - 1, y - 1 - coatLift, 2, 7);
     surfaceContext.fillStyle = boots;
-    surfaceContext.fillRect(x - 4, y + 7, 3, 4);
-    surfaceContext.fillRect(x + 1, y + 7, 3, 4);
+    surfaceContext.fillRect(x - 4 + farLegShift, y + 7 - Math.max(0, stride), 3, 4);
+    surfaceContext.fillRect(x + 1 + nearLegShift, y + 7 + Math.min(0, stride), 3, 4);
     return;
   }
 
   if (facing === "left" || facing === "right") {
     const dir = facing === "left" ? -1 : 1;
     surfaceContext.fillStyle = scarf;
-    surfaceContext.fillRect(x - 3 - dir, y - 1, 2, 5);
+    surfaceContext.fillRect(x - 3 - dir, y - 1 - coatLift, 2, 5);
     surfaceContext.fillStyle = skin;
     surfaceContext.fillRect(x - 3, y - 8, 6, 6);
     surfaceContext.fillStyle = hair;
@@ -13011,12 +16057,12 @@ function drawFallbackPlayerSprite(anchor: Point, facing: FacingDirection, bob: n
     surfaceContext.fillStyle = trim;
     surfaceContext.fillRect(x + (dir > 0 ? 1 : -2), y - 5, 2, 1);
     surfaceContext.fillStyle = coat;
-    surfaceContext.fillRect(x - 5, y - 2, 9, 9);
+    surfaceContext.fillRect(x - 5, y - 2 - coatLift, 9, 9);
     surfaceContext.fillStyle = coatShadow;
-    surfaceContext.fillRect(x - 2, y, 4, 6);
+    surfaceContext.fillRect(x - 2, y - coatLift, 4, 6);
     surfaceContext.fillStyle = boots;
-    surfaceContext.fillRect(x - 3, y + 7, 2, 4);
-    surfaceContext.fillRect(x + 1, y + 7, 2, 4);
+    surfaceContext.fillRect(x - 3 + farLegShift, y + 7 - Math.max(0, stride), 2, 4);
+    surfaceContext.fillRect(x + 1 + nearLegShift, y + 7 + Math.min(0, stride), 2, 4);
     surfaceContext.fillStyle = skin;
     surfaceContext.fillRect(x + (dir > 0 ? 4 : -5), y + 1, 2, 4);
     return;
@@ -13030,18 +16076,18 @@ function drawFallbackPlayerSprite(anchor: Point, facing: FacingDirection, bob: n
   surfaceContext.fillRect(x - 2, y - 5, 1, 1);
   surfaceContext.fillRect(x + 1, y - 5, 1, 1);
   surfaceContext.fillStyle = scarf;
-  surfaceContext.fillRect(x - 5, y - 3, 10, 2);
+  surfaceContext.fillRect(x - 5, y - 3 - coatLift, 10, 2);
   surfaceContext.fillStyle = coat;
-  surfaceContext.fillRect(x - 6, y - 2, 12, 9);
+  surfaceContext.fillRect(x - 6, y - 2 - coatLift, 12, 9);
   surfaceContext.fillStyle = trim;
-  surfaceContext.fillRect(x - 1, y - 1, 2, 7);
-  surfaceContext.fillRect(x - 5, y - 1, 2, 2);
-  surfaceContext.fillRect(x + 3, y - 1, 2, 2);
+  surfaceContext.fillRect(x - 1, y - 1 - coatLift, 2, 7);
+  surfaceContext.fillRect(x - 5, y - 1 - coatLift, 2, 2);
+  surfaceContext.fillRect(x + 3, y - 1 - coatLift, 2, 2);
   surfaceContext.fillStyle = coatShadow;
-  surfaceContext.fillRect(x - 6, y + 5, 12, 2);
+  surfaceContext.fillRect(x - 6, y + 5 - coatLift, 12, 2);
   surfaceContext.fillStyle = boots;
-  surfaceContext.fillRect(x - 4, y + 7, 3, 4);
-  surfaceContext.fillRect(x + 1, y + 7, 3, 4);
+  surfaceContext.fillRect(x - 4 + farLegShift, y + 7 - Math.max(0, stride), 3, 4);
+  surfaceContext.fillRect(x + 1 + nearLegShift, y + 7 + Math.min(0, stride), 3, 4);
 }
 
 function getPlayerSpriteFacing(angle: number): PlayerSpriteFacing {
@@ -13060,13 +16106,13 @@ function getPlayerSpriteFacing(angle: number): PlayerSpriteFacing {
   return facings[octant] ?? "down";
 }
 
-function drawPlayerSprite(anchor: Point, facingAngle: number, bob: number, walkStride: number): void {
+function drawPlayerSprite(anchor: Point, facingAngle: number, bob: number, walkStride: number, idleBreath = 0): void {
   const x = Math.round(anchor.x);
   const y = Math.round(anchor.y + bob);
   const sheet = playerSpriteSheetState.sheet;
   if (!sheet) {
     const fallbackFacing = getFacingDirection(Math.cos(facingAngle), Math.sin(facingAngle), "down");
-    drawFallbackPlayerSprite(anchor, fallbackFacing, bob);
+    drawFallbackPlayerSprite(anchor, fallbackFacing, bob, walkStride, idleBreath);
     return;
   }
 
@@ -13074,14 +16120,15 @@ function drawPlayerSprite(anchor: Point, facingAngle: number, bob: number, walkS
   const frame = sheet.frames[facing];
   const strideIntensity = Math.abs(walkStride);
   const spriteScale = PLAYER_SPRITE_TARGET_HEIGHT / frame.height;
-  const drawHeight = Math.max(30, Math.round(PLAYER_SPRITE_TARGET_HEIGHT * (1 - strideIntensity * 0.06)));
+  const drawHeight = Math.max(30, Math.round(PLAYER_SPRITE_TARGET_HEIGHT * (1 - strideIntensity * 0.06 + idleBreath * 0.02)));
   const drawWidth = Math.max(
     PLAYER_SPRITE_MIN_WIDTH,
-    Math.round(frame.width * spriteScale * (1 + strideIntensity * 0.1))
+    Math.round(frame.width * spriteScale * (1 + strideIntensity * 0.1 - idleBreath * 0.01))
   );
   const swayX = Math.round(walkStride * 1.4);
+  const breathLift = Math.round(idleBreath * 1.5);
   const drawLeft = x - Math.round(drawWidth / 2) + swayX;
-  const drawTop = y - drawHeight + PLAYER_SPRITE_BASELINE_OFFSET + Math.round(strideIntensity);
+  const drawTop = y - drawHeight + PLAYER_SPRITE_BASELINE_OFFSET + Math.round(strideIntensity) - breathLift;
 
   surfaceContext.drawImage(
     sheet.canvas,
@@ -13098,10 +16145,287 @@ function drawPlayerSprite(anchor: Point, facingAngle: number, bob: number, walkS
 }
 
 function drawPlayer(elapsed: number): void {
+  if (introCinematicState.active && introCinematicState.time < INTRO_CINEMATIC_HERO_START_TIME) {
+    return;
+  }
   const position = worldToScreen(player.x, player.y);
   const walkStride = player.step > 0 ? Math.sin(player.step) : 0;
-  const bob = player.step > 0 ? walkStride * 1.8 : Math.sin(elapsed * 2) * 0.35;
-  drawPlayerSprite(position, player.facing, bob, walkStride);
+  const idleBreath = player.step > 0 || player.idleTime < 0.5
+    ? 0
+    : Math.sin((elapsed - 0.5) * 2.2) * 0.65;
+  const bob = player.step > 0
+    ? walkStride * 1.8
+    : player.idleTime >= 0.5
+      ? idleBreath * 0.6
+      : Math.sin(elapsed * 1.8) * 0.18;
+  drawPlayerSprite(position, player.facing, bob, walkStride, idleBreath);
+}
+
+function drawIntroCinematicDepartmentHighlights(elapsed: number): void {
+  if (!introCinematicState.active || introCinematicState.time < 1.6 || introCinematicState.time > 4.4) {
+    return;
+  }
+
+  const pulse = 0.5 + Math.sin(elapsed * 4.4) * 0.5;
+  departments.forEach((department, index) => {
+    const room = rectToScreen(department.roomRect);
+    const wave = clamp((introCinematicState.time - 1.6) * 1.4 - index * 0.08, 0, 1);
+    if (wave <= 0) {
+      return;
+    }
+    surfaceContext.fillStyle = withAlpha(department.accent, 0.05 + pulse * 0.05 + wave * 0.1);
+    surfaceContext.fillRect(room.left - 3, room.top - 3, room.width + 6, room.height + 6);
+    surfaceContext.strokeStyle = withAlpha("#f7fbff", 0.12 + wave * 0.22);
+    surfaceContext.lineWidth = 1;
+    surfaceContext.strokeRect(room.left - 1.5, room.top - 1.5, room.width + 3, room.height + 3);
+  });
+}
+
+function drawIntroCinematicGuideSpotlight(elapsed: number): void {
+  if (!introCinematicState.active || introCinematicState.time < 4 || introCinematicState.time > 5.4) {
+    return;
+  }
+
+  const anchor = worldToScreen(introCinematicState.guidePoint.x, introCinematicState.guidePoint.y);
+  const progress = easeOutBack(clamp((introCinematicState.time - 4) / 1, 0, 1));
+  const bounce = Math.sin(progress * Math.PI * 2.5) * 4 * (1 - clamp((introCinematicState.time - 4.8) / 0.6, 0, 1));
+  drawInteractionBeacon(anchor, elapsed, "#ffb703", true, {
+    width: 24,
+    height: 14,
+    offsetY: 5,
+    beamHeight: 16,
+    seed: introCinematicState.time * 4,
+  });
+  drawLobsterGuideSprite(
+    { x: anchor.x, y: anchor.y - bounce },
+    elapsed,
+    true,
+    {
+      scale: 1.35,
+      glowAlpha: 0.5,
+      facingAngle: Math.atan2(player.y - introCinematicState.guidePoint.y, player.x - introCinematicState.guidePoint.x),
+    }
+  );
+}
+
+function drawIntroCinematicArrow(elapsed: number): void {
+  if (!introCinematicState.active || introCinematicState.time < INTRO_CINEMATIC_ARROW_TIME) {
+    return;
+  }
+
+  const playerAnchor = worldToScreen(player.x, player.y);
+  const targetAnchor = worldToScreen(introCinematicState.guidePoint.x, introCinematicState.guidePoint.y);
+  const dx = targetAnchor.x - playerAnchor.x;
+  const dy = targetAnchor.y - playerAnchor.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 6) {
+    return;
+  }
+
+  const pulse = 0.5 + Math.sin(elapsed * 5) * 0.5;
+  const arrowAngle = Math.atan2(dy, dx) + Math.PI / 2;
+  const arrowAnchor = {
+    x: playerAnchor.x + (dx / distance) * Math.min(28, distance * 0.5),
+    y: playerAnchor.y + (dy / distance) * Math.min(28, distance * 0.5),
+  };
+
+  surfaceContext.save();
+  surfaceContext.translate(Math.round(arrowAnchor.x), Math.round(arrowAnchor.y));
+  surfaceContext.rotate(arrowAngle);
+  surfaceContext.fillStyle = withAlpha("#ffb703", 0.18 + pulse * 0.14);
+  surfaceContext.beginPath();
+  surfaceContext.arc(0, 0, 13 + pulse * 2, 0, Math.PI * 2);
+  surfaceContext.fill();
+  surfaceContext.fillStyle = withAlpha("#09111d", 0.86);
+  surfaceContext.beginPath();
+  surfaceContext.moveTo(0, -13);
+  surfaceContext.lineTo(9, 2);
+  surfaceContext.lineTo(4, 2);
+  surfaceContext.lineTo(4, 10);
+  surfaceContext.lineTo(-4, 10);
+  surfaceContext.lineTo(-4, 2);
+  surfaceContext.lineTo(-9, 2);
+  surfaceContext.closePath();
+  surfaceContext.fill();
+  surfaceContext.fillStyle = "#ffcf47";
+  surfaceContext.beginPath();
+  surfaceContext.moveTo(0, -11);
+  surfaceContext.lineTo(7, 1);
+  surfaceContext.lineTo(3, 1);
+  surfaceContext.lineTo(3, 8);
+  surfaceContext.lineTo(-3, 8);
+  surfaceContext.lineTo(-3, 1);
+  surfaceContext.lineTo(-7, 1);
+  surfaceContext.closePath();
+  surfaceContext.fill();
+  surfaceContext.restore();
+}
+
+function drawCompanionLobsterBubble(anchor: Point, lines: string[], accent: string): void {
+  if (lines.length === 0) {
+    return;
+  }
+
+  surfaceContext.save();
+  surfaceContext.font = '600 12px "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif';
+  surfaceContext.textAlign = "center";
+  surfaceContext.textBaseline = "middle";
+  const paddingX = 10;
+  const paddingY = 7;
+  const lineHeight = 15;
+  const pointer = 7;
+  const textWidth = lines.reduce((max, line) => Math.max(max, surfaceContext.measureText(line).width), 0);
+  const width = Math.ceil(textWidth + paddingX * 2);
+  const height = Math.ceil(lines.length * lineHeight + paddingY * 2);
+  const left = clamp(anchor.x - width - 24, 12, surface.width - width - 12);
+  const top = clamp(anchor.y - height - 18, 12, surface.height - height - 24);
+  const pointerY = top + height - 8;
+
+  surfaceContext.fillStyle = "rgba(9, 11, 18, 0.42)";
+  surfaceContext.fillRect(left + 3, top + 3, width, height);
+  surfaceContext.fillStyle = "rgba(248, 243, 232, 0.98)";
+  surfaceContext.fillRect(left, top, width, height);
+  surfaceContext.strokeStyle = adjustHex(accent, -30);
+  surfaceContext.lineWidth = 2;
+  surfaceContext.strokeRect(left + 1, top + 1, width - 2, height - 2);
+  surfaceContext.beginPath();
+  surfaceContext.moveTo(left + width - 18, pointerY);
+  surfaceContext.lineTo(left + width - 8, pointerY + pointer);
+  surfaceContext.lineTo(left + width - 24, pointerY + 4);
+  surfaceContext.closePath();
+  surfaceContext.fill();
+  surfaceContext.stroke();
+
+  lines.forEach((line, index) => {
+    surfaceContext.fillStyle = index === 0 ? adjustHex(accent, -42) : "#202638";
+    surfaceContext.fillText(line, left + width / 2, top + paddingY + lineHeight / 2 + index * lineHeight);
+  });
+  surfaceContext.restore();
+}
+
+function drawCompanionLobsterOverlay(elapsed: number): void {
+  if (introCinematicState.active || lobsterCompanionState.visibleTimer <= 0) {
+    return;
+  }
+
+  const anchor = {
+    x: surface.width - 46,
+    y: surface.height - 74,
+  };
+  drawLobsterGuideSprite(anchor, elapsed, true, {
+    scale: 1.18,
+    glowAlpha: 0.44,
+    facingAngle: lobsterCompanionState.facing,
+  });
+  const lines = splitBubbleText(lobsterCompanionState.message, 10).slice(0, 3);
+  drawCompanionLobsterBubble(anchor, lines, lobsterCompanionState.accent);
+}
+
+function drawKonamiOverlay(elapsed: number): void {
+  if (konamiState.activeUntil <= performance.now()) {
+    return;
+  }
+
+  const remainingRatio = clamp((konamiState.activeUntil - performance.now()) / KONAMI_OVERLAY_DURATION_MS, 0, 1);
+  const pulse = 0.5 + Math.sin(elapsed * 10) * 0.5;
+  const anchor = {
+    x: surface.width / 2,
+    y: surface.height / 2 - 6 + Math.sin(elapsed * 8) * 8,
+  };
+
+  surfaceContext.save();
+  surfaceContext.fillStyle = withAlpha("#09111d", 0.12 + pulse * 0.08);
+  surfaceContext.fillRect(0, 0, surface.width, surface.height);
+  drawLobsterGuideSprite(anchor, elapsed, true, {
+    scale: 2.2 + pulse * 0.16,
+    glowAlpha: 0.44 + pulse * 0.18,
+    facingAngle: Math.sin(elapsed * 7) > 0 ? Math.PI * 0.15 : Math.PI * 0.85,
+  });
+
+  const label = pickUiText("KONAMI 彩蛋 · Lobster Dance", "KONAMI EASTER EGG · Lobster Dance");
+  surfaceContext.textAlign = "center";
+  surfaceContext.textBaseline = "middle";
+  surfaceContext.font = '700 14px "JetBrains Mono", "IBM Plex Mono", monospace';
+  const labelWidth = Math.ceil(surfaceContext.measureText(label).width + 24);
+  const labelLeft = Math.round(anchor.x - labelWidth / 2);
+  const labelTop = Math.round(anchor.y + 48);
+  surfaceContext.fillStyle = withAlpha("#09111d", 0.82 * remainingRatio + 0.12);
+  surfaceContext.fillRect(labelLeft, labelTop, labelWidth, 24);
+  surfaceContext.strokeStyle = withAlpha("#ffcf47", 0.72 * remainingRatio + 0.12);
+  surfaceContext.lineWidth = 2;
+  surfaceContext.strokeRect(labelLeft + 1, labelTop + 1, labelWidth - 2, 22);
+  surfaceContext.fillStyle = withAlpha("#fff7d6", 0.92);
+  surfaceContext.fillText(label, anchor.x, labelTop + 12);
+  surfaceContext.restore();
+}
+
+function drawIntroCinematicOverlay(): void {
+  if (!introCinematicState.active) {
+    return;
+  }
+
+  const time = introCinematicState.time;
+  const titleProgress = clamp(time / 1.6, 0, 1);
+  const burstProgress = clamp((time - 1.5) / 0.7, 0, 1);
+  const titleAlpha = 1 - clamp((time - 2.1) / 0.8, 0, 1);
+  const caption = time < 2
+    ? pickUiText("AI圈顶流 OPEN CLAW 小龙虾", "AI Hype Beast OPEN CLAW Lobster")
+    : time < 4
+      ? pickUiText("10 个部门亮灯，办公室进入工作态。", "Ten departments light up and the office comes alive.")
+      : time < 5
+        ? pickUiText("Lobster 先跳出来带路。", "Lobster jumps in first to guide the room.")
+        : time < INTRO_CINEMATIC_ARROW_TIME
+          ? pickUiText("Hero 从左侧走出。", "Hero walks in from the left.")
+          : pickUiText("第一站：前台三张工单。", "First stop: the three reception tickets.");
+
+  sceneContext.save();
+  sceneContext.fillStyle = withAlpha("#070a14", 0.2 + (1 - titleProgress) * 0.4);
+  sceneContext.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (titleAlpha > 0.01) {
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height * 0.18;
+    sceneContext.textAlign = "center";
+    sceneContext.textBaseline = "middle";
+    sceneContext.fillStyle = withAlpha("#ffcf47", titleAlpha);
+    sceneContext.font = '700 20px "Inter", "PingFang SC", sans-serif';
+    sceneContext.fillText("AI圈顶流", centerX, centerY - 22);
+    sceneContext.font = '700 16px "JetBrains Mono", "IBM Plex Mono", monospace';
+    sceneContext.fillStyle = withAlpha("#f7fbff", titleAlpha);
+    sceneContext.fillText("OPEN CLAW", centerX, centerY);
+    sceneContext.font = '700 24px "Inter", "PingFang SC", sans-serif';
+    sceneContext.fillStyle = withAlpha("#ff6b6b", titleAlpha);
+    sceneContext.fillText("小龙虾", centerX, centerY + 24);
+
+    if (burstProgress > 0) {
+      for (let index = 0; index < 16; index += 1) {
+        const angle = (Math.PI * 2 * index) / 16;
+        const radius = 18 + burstProgress * 42;
+        sceneContext.fillStyle = withAlpha(index % 2 === 0 ? "#ffb703" : "#89d0ff", (1 - burstProgress) * 0.55);
+        sceneContext.fillRect(
+          centerX + Math.cos(angle) * radius,
+          centerY + Math.sin(angle) * radius,
+          4,
+          4
+        );
+      }
+    }
+  }
+
+  const captionWidth = Math.min(460, canvas.width - 40);
+  const captionLeft = (canvas.width - captionWidth) / 2;
+  const captionTop = canvas.height - 54;
+  sceneContext.fillStyle = "rgba(9, 11, 18, 0.74)";
+  sceneContext.fillRect(captionLeft, captionTop, captionWidth, 28);
+  sceneContext.strokeStyle = withAlpha("#ffb703", 0.52);
+  sceneContext.lineWidth = 1;
+  sceneContext.strokeRect(captionLeft + 0.5, captionTop + 0.5, captionWidth - 1, 27);
+  sceneContext.textAlign = "center";
+  sceneContext.textBaseline = "middle";
+  sceneContext.font = '600 12px "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif';
+  sceneContext.fillStyle = "#f7fbff";
+  sceneContext.fillText(translateRuntimeCopy(caption), captionLeft + captionWidth / 2, captionTop + 14);
+  sceneContext.restore();
 }
 
 function drawTitleScreenBackdrop(elapsed: number): void {
@@ -13227,10 +16551,10 @@ function drawScreenEffects(): void {
     surfaceContext.fillRect(0, y, surface.width, 1);
   }
 
-  surfaceContext.fillStyle = "rgba(3, 6, 15, 0.22)";
+  surfaceContext.fillStyle = "rgba(17, 22, 46, 0.22)";
   surfaceContext.fillRect(0, 0, surface.width, 8);
   surfaceContext.fillRect(0, surface.height - 8, surface.width, 8);
-  surfaceContext.fillStyle = "rgba(3, 6, 15, 0.14)";
+  surfaceContext.fillStyle = "rgba(17, 22, 46, 0.14)";
   surfaceContext.fillRect(0, 0, 10, surface.height);
   surfaceContext.fillRect(surface.width - 10, 0, 10, surface.height);
 }
@@ -13251,6 +16575,7 @@ function renderScene(elapsed: number): void {
   sharedZones.forEach((zone) => drawSharedZone(zone, elapsed));
   officeProps.forEach((prop, index) => drawOfficeProp(prop, elapsed, index));
   departments.forEach((department) => drawDepartment(department, elapsed));
+  drawIntroCinematicDepartmentHighlights(elapsed);
   drawNavigationFocusImmersion(elapsed);
   drawAreaTransitionPulse(navigationFocusTransition, elapsed, {
     strokeBoost: 1.15,
@@ -13268,6 +16593,8 @@ function renderScene(elapsed: number): void {
   drawGroundInteractionHighlights(elapsed);
   [...areaGuides].sort((left, right) => left.position.y - right.position.y).forEach((guide) => drawAreaGuide(guide, elapsed));
   drawPlayer(elapsed);
+  drawIntroCinematicGuideSpotlight(elapsed);
+  drawIntroCinematicArrow(elapsed);
   drawOfficePropForegroundOverlays(elapsed);
   drawDepartmentOutcomeFeedOverlay(elapsed);
   drawGoalRelayOverlay(elapsed);
@@ -13275,6 +16602,8 @@ function renderScene(elapsed: number): void {
   drawDepartmentMilestoneOverlay(elapsed);
   drawFocusArrivalCinematic(elapsed);
   drawScreenEffects();
+  drawCompanionLobsterOverlay(elapsed);
+  drawKonamiOverlay(elapsed);
 
   sceneContext.clearRect(0, 0, canvas.width, canvas.height);
   sceneContext.imageSmoothingEnabled = false;
@@ -13286,13 +16615,13 @@ function renderScene(elapsed: number): void {
 
   sceneContext.drawImage(surface, transform.drawLeft, transform.drawTop, drawWidth, drawHeight);
   drawHdCorridorHeadings(transform);
-  drawHdCommandBoard(transform);
   drawExitBubbleOverlay(transform, overlayRects);
   drawAreaGuideBubbleOverlays(transform, overlayRects);
   drawTerminalBubbleOverlays(transform, overlayRects);
   drawNpcBubbleOverlays(transform, overlayRects);
   drawOffscreenInteractionIndicators(transform, overlayRects);
   drawSceneLabelOverlays(transform, overlayRects);
+  drawIntroCinematicOverlay();
 }
 
 function renderMinimap(elapsed: number): void {
@@ -13713,6 +17042,28 @@ function renderMinimap(elapsed: number): void {
     });
   });
 
+  sharedZones.forEach((zone, index) => {
+    const zonePoint = project(
+      zone.roomRect.left + zone.roomRect.width / 2,
+      zone.roomRect.top + zone.roomRect.height / 2
+    );
+    const pulse = 0.5 + Math.sin(elapsed * 3.8 + index * 0.9) * 0.5;
+    const accent = zone.kind === "reception" ? "#ffb703" : "#f6d27a";
+    minimapContext.fillStyle = withAlpha(accent, 0.14 + pulse * 0.08);
+    minimapContext.beginPath();
+    minimapContext.arc(zonePoint.x, zonePoint.y, 6 + pulse * 1.4, 0, Math.PI * 2);
+    minimapContext.fill();
+    minimapContext.fillStyle = withAlpha("#09111d", 0.82);
+    minimapContext.fillRect(zonePoint.x - 4, zonePoint.y - 4, 8, 8);
+    minimapContext.fillStyle = accent;
+    minimapContext.fillRect(zonePoint.x - 1, zonePoint.y - 4, 2, 8);
+    minimapContext.fillRect(zonePoint.x - 4, zonePoint.y - 1, 8, 2);
+    minimapContext.fillRect(zonePoint.x - 3, zonePoint.y - 3, 6, 6);
+    minimapContext.fillStyle = "#fff7d6";
+    minimapContext.fillRect(zonePoint.x - 1, zonePoint.y - 2, 2, 4);
+    minimapContext.fillRect(zonePoint.x - 2, zonePoint.y - 1, 4, 2);
+  });
+
   if (departmentMilestoneState.pulse > 0.08) {
     const department = departments.find((item) => item.id === departmentMilestoneState.departmentId) ?? null;
     if (department) {
@@ -13992,6 +17343,15 @@ function renderMinimap(elapsed: number): void {
     minimapContext.restore();
   });
 
+  const playerPulse = 0.5 + Math.sin(elapsed * 4.4) * 0.5;
+  minimapContext.fillStyle = withAlpha("#ffb703", 0.18 + playerPulse * 0.14);
+  minimapContext.beginPath();
+  minimapContext.arc(playerPoint.x, playerPoint.y, 8 + playerPulse * 2, 0, Math.PI * 2);
+  minimapContext.fill();
+  minimapContext.fillStyle = "#ffb703";
+  minimapContext.beginPath();
+  minimapContext.arc(playerPoint.x, playerPoint.y, 2.5, 0, Math.PI * 2);
+  minimapContext.fill();
   minimapContext.save();
   minimapContext.translate(playerPoint.x, playerPoint.y);
   minimapContext.rotate(player.facing + Math.PI / 2);
@@ -14189,6 +17549,77 @@ function updateCamera(delta: number, lookDirection: Point | null, lookStrength =
   void delta;
   void lookDirection;
   void lookStrength;
+  if (introCinematicState.active) {
+    const cinematicTime = introCinematicState.time;
+    let focus = introCinematicState.overviewFocus;
+    let zoom = isCompactViewport() ? 0.96 : 0.68;
+
+    if (cinematicTime < 2) {
+      const progress = easeInOutCubic(cinematicTime / 2);
+      focus = lerpPoint(
+        {
+          x: introCinematicState.overviewFocus.x,
+          y: introCinematicState.overviewFocus.y - 24,
+        },
+        introCinematicState.overviewFocus,
+        progress
+      );
+      zoom = lerp(isCompactViewport() ? 1.02 : 0.62, isCompactViewport() ? 0.98 : 0.72, progress);
+    } else if (cinematicTime < 4) {
+      const progress = easeInOutCubic((cinematicTime - 2) / 2);
+      focus = lerpPoint(introCinematicState.overviewFocus, introCinematicState.receptionFocus, progress * 0.35);
+      zoom = lerp(isCompactViewport() ? 0.98 : 0.72, isCompactViewport() ? 1.08 : 0.88, progress);
+    } else if (cinematicTime < 5) {
+      const progress = easeOutBack(cinematicTime - 4);
+      focus = lerpPoint(introCinematicState.overviewFocus, introCinematicState.receptionFocus, progress);
+      zoom = lerp(isCompactViewport() ? 1.08 : 0.88, isCompactViewport() ? 1.22 : 1.1, progress);
+    } else if (cinematicTime < INTRO_CINEMATIC_ARROW_TIME) {
+      const progress = easeInOutCubic(cinematicTime - INTRO_CINEMATIC_HERO_START_TIME);
+      const heroFocus = {
+        x: lerp(player.x, introCinematicState.guidePoint.x, 0.42),
+        y: lerp(player.y, introCinematicState.guidePoint.y, 0.42),
+      };
+      focus = lerpPoint(introCinematicState.receptionFocus, heroFocus, progress);
+      zoom = lerp(isCompactViewport() ? 1.22 : 1.1, isCompactViewport() ? 1.3 : 1.16, progress);
+    } else {
+      const progress = easeInOutCubic(
+        (cinematicTime - INTRO_CINEMATIC_ARROW_TIME) /
+          Math.max(0.001, introCinematicState.duration - INTRO_CINEMATIC_ARROW_TIME)
+      );
+      focus = {
+        x: lerp(player.x, introCinematicState.guidePoint.x, 0.5),
+        y: lerp(player.y, introCinematicState.guidePoint.y, 0.45),
+      };
+      zoom = lerp(isCompactViewport() ? 1.3 : 1.16, isCompactViewport() ? 1.34 : 1.2, progress);
+    }
+
+    camera.zoom = zoom;
+    camera.targetZoom = zoom;
+    camera.lookAheadX = 0;
+    camera.lookAheadY = 0;
+    camera.lookAheadStrength = 0;
+    camera.lookAheadDirectionX = 0;
+    camera.lookAheadDirectionY = 0;
+    camera.navigationBiasX = 0;
+    camera.navigationBiasY = 0;
+    camera.meetingBiasX = 0;
+    camera.meetingBiasY = 0;
+    camera.zoomBias = 0;
+    const halfWidth = surface.width / camera.zoom / 2;
+    const halfHeight = surface.height / camera.zoom / 2;
+    camera.x = clamp(
+      focus.x,
+      worldBounds.left + halfWidth,
+      worldBounds.left + worldBounds.width - halfWidth
+    );
+    camera.y = clamp(
+      focus.y,
+      worldBounds.top + halfHeight,
+      worldBounds.top + worldBounds.height - halfHeight
+    );
+    return;
+  }
+
   camera.lookAheadX = 0;
   camera.lookAheadY = 0;
   camera.lookAheadStrength = 0;
@@ -14230,7 +17661,33 @@ function updateWorld(delta: number): void {
   navigationFocusTransition.pulse = Math.max(0, navigationFocusTransition.pulse - delta / NAVIGATION_FOCUS_TRANSITION_DURATION);
   activeAreaTransition.pulse = Math.max(0, activeAreaTransition.pulse - delta / ACTIVE_AREA_TRANSITION_DURATION);
   focusArrivalTransition.pulse = Math.max(0, focusArrivalTransition.pulse - delta / FOCUS_ARRIVAL_TRANSITION_DURATION);
-  updateNpcActors(delta);
+  if (modal.classList.contains("hidden")) {
+    updateNpcActors(delta);
+  }
+
+  if (introCinematicState.active) {
+    clearMobileMoveTarget();
+    hoveredGuide = null;
+    hoveredTerminal = null;
+    hoveredInsight = null;
+    hoveredPodium = null;
+    hoveredExit = null;
+    updateIntroCinematic(delta);
+    updateCamera(delta, null, 0);
+    updatePrompt();
+    updateCompanionLobster(delta);
+    const currentSharedZone = getSharedZoneAtPosition(player.x, player.y);
+    activeSharedZoneId = currentSharedZone?.id ?? "";
+    activeDepartmentId = "";
+    currentZoneElement.textContent = pickUiText("入场 cinematic", "Intro Cinematic");
+    currentZoneElement.style.color = "#ffcf47";
+    currentZoneElement.style.textShadow = `0 0 14px ${withAlpha("#ffb703", 0.24)}`;
+    if (getHudStatusKey() !== lastHudStatusKey) {
+      updateHudStatus();
+    }
+    mapFloorIndicator.textContent = getLocalizedString("map.floorIndicator");
+    return;
+  }
 
   if (modal.classList.contains("hidden")) {
     if (isControlActive("forward")) {
@@ -14267,8 +17724,10 @@ function updateWorld(delta: number): void {
       };
       cameraLookStrength = clamp(movedDistance / expectedDistance, 0, 1);
       player.step += delta * 12;
+      player.idleTime = 0;
     } else {
       player.step = 0;
+      player.idleTime += delta;
     }
   } else if (modal.classList.contains("hidden") && mobileMoveTarget) {
     const deltaX = mobileMoveTarget.x - player.x;
@@ -14278,6 +17737,7 @@ function updateWorld(delta: number): void {
     if (distance <= TAP_MOVE_REACHED_DISTANCE) {
       clearMobileMoveTarget();
       player.step = 0;
+      player.idleTime += delta;
     } else {
       const previousX = player.x;
       const previousY = player.y;
@@ -14294,9 +17754,11 @@ function updateWorld(delta: number): void {
         cameraLookStrength = clamp(movedDistance / expectedDistance, 0, 1);
         mobileMoveStallTimer = 0;
         player.step += delta * 12;
+        player.idleTime = 0;
       } else {
         mobileMoveStallTimer += delta;
         player.step = 0;
+        player.idleTime += delta;
         if (mobileMoveStallTimer >= TAP_MOVE_STALL_TIMEOUT) {
           clearMobileMoveTarget();
         }
@@ -14304,6 +17766,7 @@ function updateWorld(delta: number): void {
     }
   } else {
     player.step = 0;
+    player.idleTime += delta;
   }
 
   hoveredPodium = findMeetingPodium();
@@ -14386,12 +17849,16 @@ function updateWorld(delta: number): void {
   }
 
   mapFloorIndicator.textContent = getLocalizedString("map.floorIndicator");
+  updateCompanionLobster(delta);
 }
 
 function animate(now: number): void {
   const delta = Math.min((now - lastFrameTime) / 1000, 0.05);
   lastFrameTime = now;
   const elapsed = now / 1000;
+
+  handleGamepadActions();
+  updateDebugFps(now);
 
   if (isTitleScreenActive()) {
     updateTitleScreen(delta);
@@ -14414,25 +17881,187 @@ function animate(now: number): void {
 
 function initializeUi(): void {
   syncUiVisibility();
+  syncModalUi();
   syncThankYouScreenUi();
+  syncIntroCinematicUi();
+  syncHelpOverlayUi();
+  syncSearchOverlayUi();
+  syncDashboardOverlayUi();
+  syncOnboardingOverlayUi();
+  syncCrashRecoveryUi();
+  syncNetworkBannerUi();
+  syncRouteErrorUi();
+  syncPresenterCountdownUi();
+  syncDebugHudUi();
+  updateStartupLoadingUi();
+  renderThankYouDebrief();
   renderThankYouContactList();
+  renderDebugActions();
+  renderDebugHud();
   currentZoneElement.textContent = getDefaultZoneLabel();
   officeTrafficElement.textContent = getWaitingTrafficLabel();
   focusRoomElement.textContent = getFocusRoomFallbackLabel();
   applyUiLanguage();
   syncTitleScreenUi();
+  if (!isTitleScreenActive()) {
+    maybeShowOnboarding();
+  }
 }
 
+async function registerOfflineServiceWorker(): Promise<void> {
+  if (!("serviceWorker" in navigator)) {
+    return;
+  }
+
+  const isLocalhost =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+  if (!window.isSecureContext && !isLocalhost) {
+    return;
+  }
+
+  try {
+    await navigator.serviceWorker.register("/sw.js");
+  } catch (error) {
+    console.warn("Service worker 注册失败", error);
+  }
+}
+
+window.onerror = (_message, _source, _line, _column, error) => {
+  showCrashRecoveryBanner(error ?? _message);
+  return false;
+};
+window.addEventListener("unhandledrejection", (event) => {
+  showCrashRecoveryBanner(event.reason);
+});
+crashRecoverButton.addEventListener("click", emergencyReturnToStartScreen);
+
+restorePersistedOfficeState();
+restoreFavoriteScenarios();
 initializeUi();
+void registerOfflineServiceWorker();
+setupDebugPerformanceObserver();
+applyRouteFromHash();
 resizeCanvases();
 renderMinimap(0);
+appBootstrapComplete = true;
 window.requestAnimationFrame(animate);
 window.setInterval(updateClockPanel, 1000);
+window.setInterval(rotateThesisPoint, THESIS_ROTATION_INTERVAL_MS);
+window.setInterval(autosaveOfficeState, AUTOSAVE_INTERVAL_MS);
 
 window.addEventListener("resize", resizeCanvases);
+window.addEventListener("hashchange", applyRouteFromHash);
 
 window.addEventListener("keydown", (event) => {
+  if (shouldIgnoreKeyboardEvent(event)) {
+    return;
+  }
+
+  if (!event.repeat) {
+    updateKonamiSequence(event.code);
+  }
+
+  const isHelpToggle = event.key === "?" || (event.code === "Slash" && event.shiftKey);
+  const isSearchToggle = event.key === "/" && !event.shiftKey;
+  if (event.shiftKey && event.code === "Escape" && !event.repeat) {
+    event.preventDefault();
+    emergencyReturnToStartScreen();
+    return;
+  }
+
+  if (routeErrorState.active) {
+    if (
+      !event.repeat &&
+      (event.code === "Escape" || event.code === "Enter" || event.code === "Space")
+    ) {
+      event.preventDefault();
+      closeRouteError(true);
+    }
+    return;
+  }
+
+  if (isHelpToggle && !event.repeat) {
+    event.preventDefault();
+    toggleHelpOverlay();
+    return;
+  }
+
+  if (helpOverlayState.active) {
+    if (event.code === "Escape" && !event.repeat) {
+      event.preventDefault();
+      closeHelpOverlay();
+    }
+    return;
+  }
+
+  if (searchOverlayState.active) {
+    if ((event.code === "Escape" || isSearchToggle) && !event.repeat) {
+      event.preventDefault();
+      closeSearchOverlay();
+      return;
+    }
+    if (event.code === "Enter" && !event.repeat && document.activeElement === searchInput) {
+      event.preventDefault();
+      const [firstResult] = searchOverlayState.results;
+      if (firstResult) {
+        activateSearchResult(firstResult);
+      }
+    }
+    return;
+  }
+
+  if (dashboardOverlayState.active) {
+    if ((event.code === "Escape" || (event.code === "KeyD" && event.shiftKey)) && !event.repeat) {
+      event.preventDefault();
+      closeDashboardOverlay();
+    }
+    return;
+  }
+
+  if (isSearchToggle && !event.repeat) {
+    event.preventDefault();
+    openSearchOverlay();
+    return;
+  }
+
+  if (event.code === "KeyD" && event.shiftKey && !event.repeat) {
+    event.preventDefault();
+    openDashboardOverlay();
+    return;
+  }
+
+  if (event.code === "KeyN" && !event.repeat) {
+    event.preventDefault();
+    openSpeakerNotesWindow();
+    return;
+  }
+
+  if (event.code === "KeyS" && !event.repeat && !modal.classList.contains("hidden")) {
+    event.preventDefault();
+    toggleSpeechNarration();
+    return;
+  }
+
+  if (
+    event.code === "KeyB" &&
+    !event.repeat &&
+    presenterSceneState.scenarioId &&
+    !modal.classList.contains("hidden")
+  ) {
+    event.preventDefault();
+    toggleFavoriteScenario(presenterSceneState.scenarioId);
+    return;
+  }
+
   if (isTitleScreenActive()) {
+    return;
+  }
+
+  if (introCinematicState.active) {
+    if (isHandledKeyboardCode(event.code) || event.code === "Escape") {
+      event.preventDefault();
+    }
     return;
   }
 
@@ -14444,12 +18073,15 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (shouldIgnoreKeyboardEvent(event)) {
-    return;
-  }
-
   if (isHandledKeyboardCode(event.code)) {
     event.preventDefault();
+  }
+
+  if (event.code === "KeyP" && !event.repeat) {
+    uiMinimal = !uiMinimal;
+    syncUiVisibility();
+    persistOfficeState();
+    return;
   }
 
   if (event.code === "KeyE") {
@@ -14481,15 +18113,34 @@ window.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("keyup", (event) => {
+  if (shouldIgnoreKeyboardEvent(event)) {
+    return;
+  }
+
+  if (routeErrorState.active) {
+    return;
+  }
+
+  if (searchOverlayState.active || dashboardOverlayState.active) {
+    return;
+  }
+
+  if (helpOverlayState.active) {
+    return;
+  }
+
   if (isTitleScreenActive()) {
     return;
   }
 
-  if (isThankYouScreenActive()) {
+  if (introCinematicState.active) {
+    if (isHandledKeyboardCode(event.code)) {
+      event.preventDefault();
+    }
     return;
   }
 
-  if (shouldIgnoreKeyboardEvent(event)) {
+  if (isThankYouScreenActive()) {
     return;
   }
 
@@ -14503,27 +18154,38 @@ window.addEventListener("keyup", (event) => {
 window.addEventListener("blur", () => {
   keys.clear();
   touchControls.clear();
+  resetGamepadState();
   clearMobileMoveTarget();
   isDragging = false;
   activeCanvasPointerId = null;
   activeCanvasPointerTapEligible = false;
   hoveredExit = null;
+  persistOfficeState();
 });
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     keys.clear();
     touchControls.clear();
+    resetGamepadState();
     clearMobileMoveTarget();
     isDragging = false;
     activeCanvasPointerId = null;
     activeCanvasPointerTapEligible = false;
     hoveredExit = null;
+    persistOfficeState();
   }
 });
 
+window.addEventListener("pagehide", persistOfficeState);
+window.addEventListener("beforeunload", persistOfficeState);
+
 canvas.addEventListener("pointerdown", (event) => {
   if (isTitleScreenActive()) {
+    return;
+  }
+
+  if (introCinematicState.active) {
     return;
   }
 
@@ -14539,6 +18201,10 @@ canvas.addEventListener("pointerdown", (event) => {
 
 canvas.addEventListener("pointermove", (event) => {
   if (isTitleScreenActive()) {
+    return;
+  }
+
+  if (introCinematicState.active) {
     return;
   }
 
@@ -14572,6 +18238,10 @@ canvas.addEventListener("pointerup", (event) => {
     return;
   }
 
+  if (introCinematicState.active) {
+    return;
+  }
+
   const shouldHandleTap =
     activeCanvasPointerId === event.pointerId && activeCanvasPointerTapEligible && isTapInteractionMode();
   isDragging = false;
@@ -14590,6 +18260,10 @@ canvas.addEventListener("pointerleave", () => {
     return;
   }
 
+  if (introCinematicState.active) {
+    return;
+  }
+
   isDragging = false;
   activeCanvasPointerId = null;
   activeCanvasPointerTapEligible = false;
@@ -14597,6 +18271,10 @@ canvas.addEventListener("pointerleave", () => {
 
 canvas.addEventListener("pointercancel", (event) => {
   if (isTitleScreenActive()) {
+    return;
+  }
+
+  if (introCinematicState.active) {
     return;
   }
 
@@ -14612,6 +18290,11 @@ canvas.addEventListener(
   "wheel",
   (event) => {
     if (isTitleScreenActive()) {
+      return;
+    }
+
+    if (introCinematicState.active) {
+      event.preventDefault();
       return;
     }
 
@@ -14644,6 +18327,9 @@ mobileControls.querySelectorAll<HTMLButtonElement>("button").forEach((button) =>
 });
 
 startButton.addEventListener("click", () => {
+  if (!startupLoadState.ready) {
+    return;
+  }
   enterTitleExperience();
 });
 
@@ -14659,6 +18345,65 @@ startLanguageEnButton.addEventListener("click", () => {
   selectTitleScreenLanguage("en");
 });
 
+speakerNotesButton.addEventListener("click", () => {
+  openSpeakerNotesWindow();
+});
+
+searchCloseButton.addEventListener("click", () => {
+  closeSearchOverlay();
+});
+
+dashboardCloseButton.addEventListener("click", () => {
+  closeDashboardOverlay();
+});
+
+routeErrorActionButton.addEventListener("click", () => {
+  closeRouteError(true);
+});
+
+searchInput.addEventListener("input", () => {
+  renderSearchResults();
+});
+
+onboardingCloseButton.addEventListener("click", () => {
+  dismissOnboarding(true);
+});
+
+helpCloseButton.addEventListener("click", () => {
+  closeHelpOverlay();
+});
+
+searchResults.addEventListener("click", (event) => {
+  const target = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-search-result]");
+  if (!target) {
+    return;
+  }
+  const result = searchOverlayState.results.find((item) => item.key === target.dataset.searchResult);
+  if (result) {
+    activateSearchResult(result);
+  }
+});
+
+dashboardResults.addEventListener("click", (event) => {
+  const favoriteTarget = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-toggle-favorite]");
+  if (favoriteTarget) {
+    const scenarioId = favoriteTarget.dataset.toggleFavorite;
+    if (scenarioId) {
+      toggleFavoriteScenario(scenarioId);
+    }
+    return;
+  }
+
+  const target = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-dashboard-scenario]");
+  if (!target) {
+    return;
+  }
+  const scenarioId = target.dataset.dashboardScenario;
+  if (scenarioId) {
+    activateDashboardScenario(scenarioId);
+  }
+});
+
 closeModalButton.addEventListener("click", closeModal);
 modal.addEventListener("click", (event) => {
   if ((event.target as HTMLElement).classList.contains("modal-backdrop")) {
@@ -14666,8 +18411,83 @@ modal.addEventListener("click", (event) => {
   }
 });
 
+helpOverlay.addEventListener("click", (event) => {
+  if ((event.target as HTMLElement).classList.contains("help-overlay__backdrop")) {
+    closeHelpOverlay();
+  }
+});
+
+searchOverlay.addEventListener("click", (event) => {
+  if ((event.target as HTMLElement).classList.contains("help-overlay__backdrop")) {
+    closeSearchOverlay();
+  }
+});
+
+dashboardOverlay.addEventListener("click", (event) => {
+  if ((event.target as HTMLElement).classList.contains("help-overlay__backdrop")) {
+    closeDashboardOverlay();
+  }
+});
+
+window.addEventListener("online", () => {
+  networkState.offline = false;
+  syncNetworkBannerUi();
+});
+
+window.addEventListener("offline", () => {
+  networkState.offline = true;
+  syncNetworkBannerUi();
+});
+
+window.addEventListener("gamepadconnected", (event) => {
+  const gamepadName = escapeHtml(event.gamepad.id);
+  showToast(
+    pickUiText(
+      `<strong>${gamepadName}</strong> 已连接，左摇杆移动，A=E，B=F/关闭。`,
+      `<strong>${gamepadName}</strong> connected. Left stick moves, A=E, B=F/close.`
+    )
+  );
+});
+
+window.addEventListener("gamepaddisconnected", (event) => {
+  resetGamepadState();
+  const gamepadName = escapeHtml(event.gamepad.id);
+  showToast(
+    pickUiText(
+      `<strong>${gamepadName}</strong> 已断开。`,
+      `<strong>${gamepadName}</strong> disconnected.`
+    )
+  );
+});
+
+debugActions.addEventListener("click", (event) => {
+  const target = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-debug-target]");
+  if (!target) {
+    return;
+  }
+
+  const debugTarget = target.dataset.debugTarget;
+  if (debugTarget) {
+    activateDebugTarget(debugTarget);
+  }
+});
+
 departmentList.addEventListener("click", (event) => {
   if (isTitleScreenActive()) {
+    return;
+  }
+
+  const favoriteScenarioTarget = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-favorite-scenario-id]");
+  if (favoriteScenarioTarget) {
+    const scenarioId = favoriteScenarioTarget.dataset.favoriteScenarioId;
+    if (!scenarioId) {
+      return;
+    }
+    const record = findScenarioRecordById(scenarioId);
+    if (record) {
+      teleportToDepartment(record.department);
+      openDepartmentModal(record.department, record.scenario.id);
+    }
     return;
   }
 
@@ -14726,6 +18546,34 @@ uiToggleButton.addEventListener("click", () => {
 
 modalContent.addEventListener("click", (event) => {
   if (isTitleScreenActive()) {
+    return;
+  }
+
+  const favoriteTarget = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-toggle-favorite]");
+  if (favoriteTarget) {
+    const scenarioId = favoriteTarget.dataset.toggleFavorite;
+    if (scenarioId) {
+      const nextFavorited = toggleFavoriteScenario(scenarioId);
+      favoriteTarget.classList.toggle("is-active", nextFavorited);
+      favoriteTarget.setAttribute("aria-pressed", String(nextFavorited));
+      favoriteTarget.textContent = nextFavorited ? getLocalizedString("favorites.remove") : getLocalizedString("favorites.add");
+    }
+    return;
+  }
+
+  const revealTarget = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-reveal-reception]");
+  if (revealTarget) {
+    const ticketStage = modalContent.querySelector<HTMLElement>("[data-reception-tickets]");
+    if (ticketStage && !ticketStage.classList.contains("is-revealed")) {
+      triggerInteractionFlash();
+      ticketStage.classList.add("is-revealed");
+      completedSharedZones.add("reception");
+      revealTarget.disabled = true;
+      revealTarget.textContent = pickUiText("已揭晓", "Revealed");
+      setLastEvent(pickUiText("前台三张工单已揭晓", "Reception ticket reveal completed"));
+      persistOfficeState();
+      showCompanionLobsterMessage();
+    }
     return;
   }
 

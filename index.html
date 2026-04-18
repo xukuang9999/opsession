@@ -6,10 +6,95 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
+    <meta
+      name="description"
+      content="20 分钟走完 30+ 个 OpenClaw AI Agent 落地场景的像素办公室演示。"
+    />
+    <meta name="application-name" content="OpenClaw Agent Office" />
+    <meta name="apple-mobile-web-app-title" content="OpenClaw" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="theme-color" content="#111522" />
+    <meta name="color-scheme" content="dark" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:title" content="AI圈顶流小龙虾 | OpenClaw Agent Office" />
+    <meta
+      property="og:description"
+      content="20 分钟走完 30+ 个 OpenClaw AI Agent 落地场景的像素办公室演示。"
+    />
+    <meta property="og:image" content="/og-card.svg" />
+    <meta property="og:image:alt" content="OpenClaw Agent Office pixel office preview card" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="AI圈顶流小龙虾 | OpenClaw Agent Office" />
+    <meta
+      name="twitter:description"
+      content="20 分钟走完 30+ 个 OpenClaw AI Agent 落地场景的像素办公室演示。"
+    />
+    <meta name="twitter:image" content="/og-card.svg" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Event",
+        "name": "AI圈顶流小龙虾 | OpenClaw Agent Office",
+        "description": "20 分钟走完 30+ 个 OpenClaw AI Agent 落地场景的像素办公室演示。",
+        "startDate": "2026-04-26",
+        "eventStatus": "https://schema.org/EventScheduled",
+        "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+        "location": {
+          "@type": "Place",
+          "name": "Monash Velos Accelerator"
+        }
+      }
+    </script>
     <title>AI圈顶流小龙虾 | OpenClaw Agent Office</title>
     <script type="module" src="/src/main.ts"></script>
   </head>
   <body class="title-screen-active">
+    <noscript>
+      <style>
+        body {
+          margin: 0;
+          min-height: 100vh;
+          display: grid;
+          place-items: center;
+          background: linear-gradient(180deg, #2c3556 0%, #141b33 100%);
+          color: #f5f7ff;
+          font-family: Inter, "PingFang SC", sans-serif;
+          padding: 24px;
+        }
+        .noscript-fallback {
+          width: min(560px, 100%);
+          padding: 24px;
+          border-radius: 24px;
+          border: 2px solid rgba(255, 183, 3, 0.42);
+          background: rgba(18, 24, 44, 0.94);
+          box-shadow: 0 24px 56px rgba(0, 0, 0, 0.28);
+        }
+        .noscript-fallback h1 {
+          margin: 0 0 12px;
+          font-size: 32px;
+          line-height: 1.1;
+        }
+        .noscript-fallback p {
+          margin: 0;
+          line-height: 1.7;
+          color: #dbe6f8;
+        }
+      </style>
+      <section class="noscript-fallback" role="status" aria-live="polite">
+        <h1>OpenClaw Agent Office 需要 JavaScript</h1>
+        <p>当前应用依赖 JavaScript 渲染像素办公室、场景弹窗与演讲者后台。请启用 JavaScript 后重新打开此页面。</p>
+      </section>
+    </noscript>
     <div id="app">
       <canvas id="scene"></canvas>
       <section id="start-screen" class="start-screen">
@@ -45,12 +130,10 @@
                   </span>
                 </h2>
                 <p id="start-subtitle" class="start-screen__subtitle" data-i18n-text="start.subtitle">
-                  2026 4月26日 · Monash Velos Accelerator
+                  2026年4月26日 · Monash Velos Accelerator
                 </p>
               </div>
-              <p id="start-copy" class="start-screen__copy start-screen__copy--note" data-i18n-text="start.copy">
-                “OpenClaw”（又称“养龙虾”）是2026年初爆火的开源 AI 智能体，因其图标为红色龙虾得名。
-              </p>
+              <p id="start-copy" class="start-screen__copy start-screen__copy--note hidden" data-i18n-text="start.copy"></p>
             </div>
 
             <div class="start-screen__info-column">
@@ -75,15 +158,24 @@
           </div>
 
           <div class="start-screen__footer">
-            <div class="start-screen__actions">
+            <div class="start-screen__actions-wrap">
+              <div id="startup-loading" class="start-screen__loading" aria-live="polite">
+                <div id="startup-loading-label" class="start-screen__loading-label">正在启动办公室… 0/4</div>
+                <div class="start-screen__loading-bar">
+                  <span id="startup-loading-fill" class="start-screen__loading-fill"></span>
+                </div>
+              </div>
+              <div class="start-screen__actions">
               <button
                 id="start-button"
                 class="start-screen__start"
                 type="button"
+                disabled
                 data-i18n-text="start.button"
               >
                 进入像素会场
               </button>
+              </div>
             </div>
             <div id="start-language-panel" class="start-screen__language">
               <div id="start-language-label" class="start-screen__language-label" data-i18n-text="start.languageLabel">
@@ -121,6 +213,10 @@
           <p class="thanks-screen__copy" data-i18n-text="thanks.copy">
             你已从办公室左侧出口离开本次体验。感谢参与，欢迎会后联系我继续交流 OpenClaw 的应用场景。
           </p>
+          <div class="thanks-screen__debrief">
+            <div class="thanks-screen__contact-title" data-i18n-text="thanks.debriefTitle">本场回顾</div>
+            <div id="thanks-debrief-list" class="thanks-screen__debrief-list"></div>
+          </div>
           <div class="thanks-screen__contact">
             <div class="thanks-screen__contact-title" data-i18n-text="thanks.contactTitle">联系方式</div>
             <div id="thanks-contact-list" class="thanks-screen__contact-list"></div>
@@ -137,6 +233,184 @@
           </div>
         </div>
       </section>
+      <div id="crash-banner" class="crash-banner hidden" role="alert">
+        <div class="crash-banner__copy">
+          <strong data-i18n-text="crash.title">应用刚刚遇到一个问题。</strong>
+          <span id="crash-banner-message" data-i18n-text="crash.detail">
+            你的语言、进度和当前位置会保留；点一下即可回到开始画面。
+          </span>
+        </div>
+        <button
+          id="crash-recover-button"
+          class="crash-banner__button"
+          type="button"
+          data-i18n-text="crash.action"
+        >
+          恢复到开始画面
+        </button>
+      </div>
+      <div id="network-banner" class="network-banner hidden" role="status" aria-live="polite">
+        <span data-i18n-text="offline.banner">您已离线，部分功能不可用。</span>
+      </div>
+      <section id="onboarding-overlay" class="onboarding-overlay hidden" aria-hidden="true">
+        <div class="onboarding-overlay__panel glass">
+          <div class="section-title" data-i18n-text="onboarding.title">第一次进办公室</div>
+          <ol class="onboarding-overlay__steps">
+            <li data-i18n-html="onboarding.stepMove">用 <code>WASD</code> / 方向键移动。</li>
+            <li data-i18n-html="onboarding.stepInteract">靠近终端按 <code>E</code>，靠近洞察按 <code>F</code>。</li>
+            <li data-i18n-html="onboarding.stepLobster">别忘了右下角的小龙虾，它会一直提醒下一步。</li>
+          </ol>
+          <button
+            id="onboarding-close"
+            class="onboarding-overlay__button"
+            type="button"
+            data-i18n-text="onboarding.dismiss"
+          >
+            知道了
+          </button>
+        </div>
+      </section>
+      <section id="help-overlay" class="help-overlay hidden" aria-hidden="true">
+        <div class="help-overlay__backdrop"></div>
+        <div class="help-overlay__panel glass" role="dialog" aria-modal="true" aria-labelledby="help-title">
+          <button
+            id="help-close"
+            class="close-button"
+            aria-label="关闭"
+            data-i18n-aria-label="common.close"
+          >
+            ×
+          </button>
+          <div class="help-overlay__eyebrow" data-i18n-text="help.eyebrow">快捷帮助</div>
+          <h2 id="help-title" class="help-overlay__title" data-i18n-text="help.title">操作手册</h2>
+          <p class="help-overlay__subtitle" data-i18n-text="help.subtitle">
+            按 ? 随时打开这张卡，演讲卡壳时也能快速找回节奏。
+          </p>
+          <div class="help-overlay__grid">
+            <article class="help-overlay__card">
+              <div class="section-title" data-i18n-text="help.movementTitle">移动与镜头</div>
+              <p data-i18n-html="help.movement">
+                用 <code>WASD</code> / 方向键移动，拖拽调整朝向，滚轮缩放镜头。
+              </p>
+            </article>
+            <article class="help-overlay__card">
+              <div class="section-title" data-i18n-text="help.interactionTitle">互动与记录</div>
+              <p data-i18n-html="help.interaction">
+                靠近终端按 <code>E</code> 进入，靠近洞察按 <code>F</code> 记录；小地图和右侧列表都能跳转。
+              </p>
+            </article>
+            <article class="help-overlay__card">
+              <div class="section-title" data-i18n-text="help.shortcutsTitle">关键快捷键</div>
+              <p data-i18n-html="help.shortcuts">
+                <code>P</code> 切 Presenter Mode，<code>?</code> 打开帮助，<code>Shift + Esc</code> 强制回到开始画面。
+              </p>
+            </article>
+            <article class="help-overlay__card">
+              <div class="section-title" data-i18n-text="help.mobileTitle">移动端</div>
+              <p data-i18n-html="help.mobile">
+                点地面移动，点终端直接触发；移动端也保留了小地图与快速导航。
+              </p>
+            </article>
+          </div>
+          <section id="help-rescue-card" class="help-overlay__rescue-card">
+            <div class="help-overlay__rescue-eyebrow" data-i18n-text="help.rescueEyebrow">不慌按钮</div>
+            <h3 class="help-overlay__rescue-title" data-i18n-text="help.rescueTitle">当前该讲什么</h3>
+            <div id="help-rescue-content"></div>
+          </section>
+          <div class="help-overlay__hint" data-i18n-text="help.closeHint">按 Esc 或点击右上角关闭</div>
+          <div id="help-version" class="help-overlay__meta">版本 v0.0.0 · build 2026.04.18</div>
+        </div>
+      </section>
+      <section id="search-overlay" class="search-overlay hidden" aria-hidden="true">
+        <div class="help-overlay__backdrop"></div>
+        <div class="search-overlay__panel glass" role="dialog" aria-modal="true" aria-labelledby="search-title">
+          <button
+            id="search-close"
+            class="close-button"
+            aria-label="关闭"
+            data-i18n-aria-label="common.close"
+          >
+            ×
+          </button>
+          <div class="help-overlay__eyebrow" data-i18n-text="search.eyebrow">全局搜索</div>
+          <h2 id="search-title" class="help-overlay__title" data-i18n-text="search.title">快速找到任意场景</h2>
+          <p class="help-overlay__subtitle" data-i18n-text="search.hint">
+            按 / 打开，输入“预算”“客服”“仓库”等关键词，直接跳到对应场景。
+          </p>
+          <input
+            id="search-input"
+            class="search-overlay__input"
+            type="search"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="搜索场景、部门、关键词…"
+          />
+          <div id="search-results" class="search-overlay__results"></div>
+        </div>
+      </section>
+      <section id="dashboard-overlay" class="dashboard-overlay hidden" aria-hidden="true">
+        <div class="help-overlay__backdrop"></div>
+        <div class="dashboard-overlay__panel glass" role="dialog" aria-modal="true" aria-labelledby="dashboard-title">
+          <button
+            id="dashboard-close"
+            class="close-button"
+            aria-label="关闭"
+            data-i18n-aria-label="common.close"
+          >
+            ×
+          </button>
+          <div class="help-overlay__eyebrow" data-i18n-text="dashboardPanel.eyebrow">KPI 总览</div>
+          <h2 id="dashboard-title" class="help-overlay__title" data-i18n-text="dashboardPanel.title">全场景 Dashboard</h2>
+          <p class="help-overlay__subtitle" data-i18n-text="dashboardPanel.subtitle">
+            按 Shift + D 打开。这里汇总所有场景的 stat、完成状态与累计执行分。
+          </p>
+          <div id="dashboard-summary" class="dashboard-overlay__summary"></div>
+          <div id="dashboard-results" class="dashboard-overlay__results"></div>
+        </div>
+      </section>
+      <section id="route-error-screen" class="route-error-screen hidden" aria-hidden="true">
+        <div class="help-overlay__backdrop"></div>
+        <div class="route-error-screen__panel glass" role="dialog" aria-modal="true" aria-labelledby="route-error-title">
+          <div class="help-overlay__eyebrow">Deep Link</div>
+          <h2 id="route-error-title" class="help-overlay__title">这个场景链接不存在</h2>
+          <p id="route-error-detail" class="help-overlay__subtitle">
+            当前链接不存在、已失效，或不再对应当前场景。你可以直接返回办公室继续漫游。
+          </p>
+          <button id="route-error-action" class="onboarding-overlay__button" type="button">
+            返回办公室
+          </button>
+        </div>
+      </section>
+      <div id="presenter-countdown" class="presenter-countdown glass" data-state="idle" aria-live="polite">
+        <div id="presenter-countdown-label" class="presenter-countdown__label" data-i18n-text="presenter.countdownLabel">
+          演讲倒计时
+        </div>
+        <div id="presenter-countdown-time" class="presenter-countdown__time">20:00</div>
+      </div>
+      <section id="debug-hud" class="debug-hud hidden" aria-hidden="true">
+        <div class="debug-hud__head">
+          <strong>Debug HUD</strong>
+          <span>?debug</span>
+        </div>
+        <div class="debug-hud__metrics">
+          <div class="debug-hud__metric">
+            <span>FPS</span>
+            <strong id="debug-fps">--</strong>
+          </div>
+          <div class="debug-hud__metric">
+            <span>Memory</span>
+            <strong id="debug-memory">--</strong>
+          </div>
+          <div class="debug-hud__metric">
+            <span>Long Tasks</span>
+            <strong id="debug-longtasks">0</strong>
+          </div>
+        </div>
+        <div id="debug-state" class="debug-hud__state">state</div>
+        <div id="debug-actions" class="debug-hud__actions"></div>
+      </section>
+      <div id="build-version" class="build-version">版本 v0.0.0 · build 2026.04.18</div>
+      <div id="autosave-indicator" class="autosave-indicator hidden" aria-live="polite">已自动保存</div>
       <button
         id="ui-toggle"
         class="ui-toggle-button"
@@ -162,29 +436,41 @@
           <div id="dashboard-last-event" class="clock-meta">最近动作：等待指令</div>
         </div>
 
-        <div class="brand-card glass">
-          <div class="eyebrow" data-i18n-text="brand.eyebrow">海报像素入口</div>
-          <h1 data-i18n-text="brand.title">AI圈顶流 OpenClaw 小龙虾</h1>
-          <p class="subtitle" data-i18n-text="brand.subtitle">2026 4月26日 · Monash Velos Accelerator</p>
-          <p class="body" data-i18n-text="brand.body">
-            从海报文案重建的像素活动入口；进入办公室后，可继续漫游 OpenClaw 在不同部门的落地场景。
-          </p>
-        </div>
-
         <div class="control-card glass">
-          <div class="section-title" data-i18n-text="controls.title">In-World Controls</div>
-          <p data-i18n-html="controls.move">
-            桌面端用 <code>WASD</code> / 方向键移动；拖拽调整朝向，滚轮缩放镜头。
-          </p>
-          <p data-i18n-html="controls.interact">
-            桌面端靠近工位按 <code>E</code> 互动、按 <code>F</code> 记录洞察；手机端点地面移动，点互动物体直接触发。
-          </p>
-          <p data-i18n-text="controls.jump">也可直接点击右侧座位清单或小地图，快速切换到指定部门。</p>
+          <details class="control-card__details">
+            <summary class="section-title" data-i18n-text="controls.title">In-World Controls</summary>
+            <div class="control-card__body">
+              <p data-i18n-html="controls.move">
+                桌面端用 <code>WASD</code> / 方向键移动；拖拽调整朝向，滚轮缩放镜头。
+              </p>
+              <p data-i18n-html="controls.interact">
+                桌面端靠近工位按 <code>E</code> 互动、按 <code>F</code> 记录洞察；手机端点地面移动，点互动物体直接触发。
+              </p>
+              <p data-i18n-text="controls.jump">也可直接点击右侧座位清单或小地图，快速切换到指定部门。</p>
+            </div>
+          </details>
         </div>
 
         <div class="speaker-card glass">
           <div class="section-title" data-i18n-text="thesis.title">核心论点</div>
           <ul id="thesis-list"></ul>
+          <div class="speaker-brief">
+            <div class="speaker-brief__row">
+              <span class="metric-label" data-i18n-text="speaker.nextLabel">下一站推荐</span>
+              <strong id="presenter-next-target">自由漫游</strong>
+            </div>
+            <div class="speaker-brief__row">
+              <span class="metric-label" data-i18n-text="speaker.sceneLabel">当前场景</span>
+              <strong id="presenter-current-scene">未进入场景</strong>
+            </div>
+            <div class="speaker-brief__row">
+              <span class="metric-label" data-i18n-text="speaker.timerLabel">场景计时</span>
+              <strong id="presenter-scene-timer">00:00</strong>
+            </div>
+            <button id="speaker-notes-button" class="speaker-notes-button" type="button" data-i18n-text="speaker.notesButton">
+              打开 Speaker Notes
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -203,6 +489,15 @@
 
         <div class="metric-card glass">
           <div class="section-title" data-i18n-text="metrics.title">演示进度</div>
+          <div class="metric-progress">
+            <div class="metric-progress__label">
+              <span data-i18n-text="metrics.progressLabel">完成度</span>
+              <strong id="completion-progress-text">0%</strong>
+            </div>
+            <div class="metric-progress__track">
+              <div id="completion-progress-fill" class="metric-progress__fill"></div>
+            </div>
+          </div>
           <div class="metric-grid">
             <div>
               <span class="metric-label" data-i18n-text="metrics.completed">已完成场景</span>
@@ -264,6 +559,7 @@
 
       <div id="prompt" class="prompt glass hidden"></div>
       <div id="toast" class="toast glass hidden"></div>
+      <div id="interaction-flash" class="interaction-flash" aria-hidden="true"></div>
 
       <div id="mobile-controls" class="mobile-controls">
         <div class="mobile-action-cluster glass" aria-label="快捷操作">

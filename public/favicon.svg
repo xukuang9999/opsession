@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="OpenClaw lobster icon">
+  <rect width="64" height="64" rx="14" fill="#111522" />
+  <path
+    d="M31 13h6v6h4v6h4v8h-4v4h4v8h-4v6h-6v-6h-6v6h-6v-6h-4v-8h4v-4h-4v-8h4v-6h4z"
+    fill="#ff6b6b"
+  />
+  <path d="M18 18h8v4h-4v4h-4zm28 0h-8v4h4v4h4z" fill="#ffb703" />
+  <path d="M23 29h6v4h-6zm12 0h6v4h-6z" fill="#fff3d1" />
+  <path d="M27 41h10v4H27z" fill="#2a314e" />
+</svg>
