@@ -1,6 +1,7 @@
 import "./style.css";
 import heroCapybaraSheetUrl from "./assets/hero-capybara-sheet.png";
 import lobsterGuideSheetUrl from "./assets/lobster-guide-sheet-strip.png";
+import lobsterGuideTitleSheetUrl from "./assets/lobster-guide-sheet.svg";
 import clawLibrarySceneFloorUrl from "./assets/clawlibrary-scene-floor.png";
 import clawLibrarySceneObjectsUrl from "./assets/clawlibrary-scene-objects.png";
 import officeLayoutConfig from "./office-layouts.json";
@@ -178,27 +179,10 @@ const UI_TEXT = {
       titleMiddle: "OPEN CLAW",
       titleBottom: "小龙虾",
       subtitle: "2026 4月26日 · Monash Velos Accelerator",
-      copy: "“OpenClaw”（又称“养龙虾”）是2026年初爆火的开源 AI 智能体，因其图标为红色龙虾得名。",
-      mascotCopy: "像素龙虾导览员已就位，活动信息按海报内容重建。",
-      whenLabel: "时间",
-      whenValue: "2026 4月26日\n14:00 - 17:00",
-      whereLabel: "地点",
-      whereValue: "Monash Velos Accelerator\n770 Blackburn Road, Clayton VIC 3168",
-      topicsLabel: "分享主题",
-      topicOne: "AI Agent 如何走向真正可用？",
-      topicTwo: "OpenClaw与工作的叠加态",
-      topicThree: "未来类OpenClaw工具在企业发展趋势",
-      agendaLabel: "现场环节",
-      agendaOne: "个人分享",
-      agendaTwo: "Q&A环节",
-      agendaThree: "自由讨论",
-      agendaFour: "Networking&聚餐",
-      speakersLabel: "分享嘉宾",
-      speakerJeremy: "Jeremy Zhang (Shiquan Zhang)",
-      speakerMichael: "Michael (Kuang Xu)",
-      speakerJordan: "Jordan (Tiancheng Zhang)",
-      hostsLabel: "主办方",
-      hostsValue: "AIDG · Boson Ventures",
+      copy: "这个 app 只保留一个主题：OpenClaw 与工作的叠加态。",
+      mascotCopy: "像素龙虾导览员已就位，页面内容只围绕“叠加态”展开。",
+      topicsLabel: "主题",
+      themePrimary: "OpenClaw 与工作的叠加态",
       button: "进入像素会场",
       languageLabel: "切换界面语言",
       languageZh: "中文",
@@ -294,28 +278,10 @@ const UI_TEXT = {
       titleMiddle: "OPEN CLAW",
       titleBottom: "LOBSTER",
       subtitle: "Apr 26, 2026 · Monash Velos Accelerator",
-      copy:
-        '"OpenClaw", nicknamed the "lobster", became a breakout open-source AI agent in early 2026 because of its red lobster icon.',
-      mascotCopy: "The pixel lobster guide is live, with event details rebuilt from the poster.",
-      whenLabel: "When",
-      whenValue: "April 26, 2026\n14:00 - 17:00",
-      whereLabel: "Where",
-      whereValue: "Monash Velos Accelerator\n770 Blackburn Road, Clayton VIC 3168",
-      topicsLabel: "Topics",
-      topicOne: "How can AI agents become truly usable?",
-      topicTwo: "OpenClaw and the superposition of work",
-      topicThree: "Where OpenClaw-like tools are heading in enterprise growth",
-      agendaLabel: "Agenda",
-      agendaOne: "Personal sharing",
-      agendaTwo: "Q&A session",
-      agendaThree: "Open discussion",
-      agendaFour: "Networking & dinner",
-      speakersLabel: "Speakers",
-      speakerJeremy: "Jeremy Zhang (Shiquan Zhang)",
-      speakerMichael: "Michael (Kuang Xu)",
-      speakerJordan: "Jordan (Tiancheng Zhang)",
-      hostsLabel: "Hosted by",
-      hostsValue: "AIDG · Boson Ventures",
+      copy: 'This app now keeps a single theme: "OpenClaw and the superposition of work."',
+      mascotCopy: 'The pixel lobster guide is live, and the page is now centered on the "superposition" theme only.',
+      topicsLabel: "Theme",
+      themePrimary: "OpenClaw and the superposition of work",
       button: "ENTER PIXEL VENUE",
       languageLabel: "Switch UI Language",
       languageZh: "中文",
@@ -938,7 +904,7 @@ preparePlayerSpriteSheet(heroCapybaraSheetUrl);
 prepareLobsterSpriteSheet(lobsterGuideSheetUrl);
 prepareSceneLayer("floorImage", clawLibrarySceneFloorUrl);
 prepareSceneLayer("objectsImage", clawLibrarySceneObjectsUrl);
-startLobster.style.backgroundImage = `url(${lobsterGuideSheetUrl})`;
+startLobster.style.backgroundImage = `url(${lobsterGuideTitleSheetUrl})`;
 
 function getLocalizedString(path: string): string {
   let current: unknown = UI_TEXT[currentUiLanguage];

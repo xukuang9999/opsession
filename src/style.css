@@ -349,9 +349,9 @@ body.title-screen-active .start-screen {
 
 .start-screen__lobster {
   width: 192px;
-  height: 206px;
+  height: 192px;
   background-repeat: no-repeat;
-  background-size: 1536px 206px;
+  background-size: 1536px 192px;
   image-rendering: pixelated;
   filter: drop-shadow(0 8px 0 rgba(9, 12, 21, 0.3));
   transform-origin: center bottom;
