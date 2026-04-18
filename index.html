@@ -9,9 +9,54 @@
     <title>工作的叠加态 | OpenClaw Agent Town Office</title>
     <script type="module" src="/src/main.ts"></script>
   </head>
-  <body>
+  <body class="title-screen-active">
     <div id="app">
       <canvas id="scene"></canvas>
+      <section id="start-screen" class="start-screen">
+        <div class="start-screen__panel">
+          <div id="start-badge" class="start-screen__badge" data-i18n-text="start.badge">Pixel Opening</div>
+          <h2 id="start-title" class="start-screen__title" data-i18n-text="start.title">小龙虾在商业上的叠加态</h2>
+          <p id="start-subtitle" class="start-screen__subtitle" data-i18n-text="start.subtitle">4月26日活动</p>
+          <p id="start-copy" class="start-screen__copy" data-i18n-text="start.copy">
+            先选择界面语言，再进入像素风商业场景。
+          </p>
+          <div class="start-screen__actions">
+            <button
+              id="start-button"
+              class="start-screen__start"
+              type="button"
+              data-i18n-text="start.button"
+            >
+              START
+            </button>
+          </div>
+          <div id="start-language-panel" class="start-screen__language">
+            <div id="start-language-label" class="start-screen__language-label" data-i18n-text="start.languageLabel">
+              选择界面语言
+            </div>
+            <div class="start-screen__language-actions">
+              <button
+                id="start-language-zh"
+                class="start-screen__language-button"
+                type="button"
+                data-language="zh-CN"
+                data-i18n-text="start.languageZh"
+              >
+                中文
+              </button>
+              <button
+                id="start-language-en"
+                class="start-screen__language-button"
+                type="button"
+                data-language="en"
+                data-i18n-text="start.languageEn"
+              >
+                English
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
       <button
         id="ui-toggle"
         class="ui-toggle-button"
@@ -20,6 +65,9 @@
         aria-pressed="false"
         data-show-label="显示 UI"
         data-hide-label="隐藏 UI"
+        data-i18n-aria-label="uiToggle.ariaLabel"
+        data-i18n-show-label="uiToggle.show"
+        data-i18n-hide-label="uiToggle.hide"
       >
         显示 UI
       </button>
@@ -28,28 +76,34 @@
         <div class="clock-card glass">
           <div id="dashboard-time" class="clock-time">00:00:00</div>
           <div id="dashboard-date" class="clock-date">----/--/--</div>
-          <div class="clock-meta">Local office session</div>
+          <div id="dashboard-session-label" class="clock-meta" data-i18n-text="dashboard.session">
+            Local office session
+          </div>
           <div id="dashboard-last-event" class="clock-meta">最近动作：等待指令</div>
         </div>
 
         <div class="brand-card glass">
-          <div class="eyebrow">Agent Town Style Demo</div>
-          <h1>工作的叠加态</h1>
-          <p class="subtitle">OpenClaw 可漫游办公世界</p>
-          <p class="body">
+          <div class="eyebrow" data-i18n-text="brand.eyebrow">Agent Town Style Demo</div>
+          <h1 data-i18n-text="brand.title">工作的叠加态</h1>
+          <p class="subtitle" data-i18n-text="brand.subtitle">OpenClaw 可漫游办公世界</p>
+          <p class="body" data-i18n-text="brand.body">
             作为办公室里的老板在工位间走动，面对面给部门 Agent 派单，观察它们在同一空间里协作执行。
           </p>
         </div>
 
         <div class="control-card glass">
-          <div class="section-title">In-World Controls</div>
-          <p>`WASD` / 方向键移动；拖拽调整朝向，滚轮缩放镜头。</p>
-          <p>走到工位旁按 `E` 面对面派单；靠近记忆节点按 `F` 记录洞察。</p>
-          <p>也可直接点击右侧座位清单或小地图，快速切换到指定部门。</p>
+          <div class="section-title" data-i18n-text="controls.title">In-World Controls</div>
+          <p data-i18n-html="controls.move">
+            桌面端用 <code>WASD</code> / 方向键移动；拖拽调整朝向，滚轮缩放镜头。
+          </p>
+          <p data-i18n-html="controls.interact">
+            桌面端靠近工位按 <code>E</code> 互动、按 <code>F</code> 记录洞察；手机端点地面移动，点互动物体直接触发。
+          </p>
+          <p data-i18n-text="controls.jump">也可直接点击右侧座位清单或小地图，快速切换到指定部门。</p>
         </div>
 
         <div class="speaker-card glass">
-          <div class="section-title">核心论点</div>
+          <div class="section-title" data-i18n-text="thesis.title">核心论点</div>
           <ul id="thesis-list"></ul>
         </div>
       </aside>
@@ -58,47 +112,72 @@
         <div class="map-card glass">
           <div class="map-header">
             <div class="map-header-main">
-              <div class="section-title">Office Map</div>
+              <div class="section-title" data-i18n-text="map.title">Office Map</div>
               <span id="map-floor-indicator" class="floor-pill">L1 Agent Office</span>
             </div>
           </div>
           <canvas id="minimap" width="300" height="220" aria-label="部门地图"></canvas>
+          <div id="map-legend" class="map-legend"></div>
           <p class="map-hint">点击工位可快速跳转，白色箭头表示你当前所在位置和面向。</p>
         </div>
 
         <div class="metric-card glass">
-          <div class="section-title">演示进度</div>
+          <div class="section-title" data-i18n-text="metrics.title">演示进度</div>
           <div class="metric-grid">
             <div>
-              <span class="metric-label">已完成场景</span>
+              <span class="metric-label" data-i18n-text="metrics.completed">已完成场景</span>
               <strong id="completed-count">0</strong>
             </div>
             <div>
-              <span class="metric-label">执行力分数</span>
+              <span class="metric-label" data-i18n-text="metrics.impact">执行力分数</span>
               <strong id="impact-score">0</strong>
             </div>
             <div>
-              <span class="metric-label">当前区域</span>
+              <span class="metric-label" data-i18n-text="metrics.zone">当前区域</span>
               <strong id="current-zone">主走廊</strong>
             </div>
             <div>
-              <span class="metric-label">当前阶段</span>
+              <span class="metric-label" data-i18n-text="metrics.stage">当前阶段</span>
               <strong id="execution-stage">辅助 → 执行</strong>
             </div>
             <div>
-              <span class="metric-label">洞察数</span>
+              <span class="metric-label" data-i18n-text="metrics.insights">洞察数</span>
               <strong id="insight-count">0</strong>
+            </div>
+            <div class="metric-wide">
+              <span class="metric-label" data-i18n-text="metrics.target">当前目标</span>
+              <strong id="current-target">自由漫游</strong>
+            </div>
+            <div class="metric-wide">
+              <span class="metric-label" data-i18n-text="metrics.meeting">会议状态</span>
+              <strong id="meeting-status">未开启</strong>
+            </div>
+            <div class="metric-wide">
+              <span class="metric-label" data-i18n-text="metrics.hotspot">热点部门</span>
+              <strong id="hotspot-department">等待热点</strong>
+            </div>
+            <div class="metric-wide">
+              <span class="metric-label" data-i18n-text="metrics.seats">会议席位</span>
+              <strong id="meeting-seat-progress">0 / 0</strong>
+            </div>
+            <div class="metric-wide">
+              <span class="metric-label" data-i18n-text="metrics.traffic">办公节奏</span>
+              <strong id="office-traffic">等待流动</strong>
+            </div>
+            <div class="metric-wide">
+              <span class="metric-label" data-i18n-text="metrics.focus">导航聚焦</span>
+              <strong id="focus-room">中央办公区</strong>
             </div>
           </div>
         </div>
 
         <div class="route-card glass">
-          <div class="section-title">场景导航</div>
+          <div class="section-title" data-i18n-text="route.title">场景导航</div>
           <div id="department-list" class="department-list"></div>
         </div>
 
         <div class="sources-card glass">
-          <div class="section-title">参考来源</div>
+          <div class="section-title" data-i18n-text="sources.title">参考来源</div>
           <div id="source-list" class="source-list"></div>
         </div>
       </aside>
@@ -106,23 +185,24 @@
       <div id="prompt" class="prompt glass hidden"></div>
       <div id="toast" class="toast glass hidden"></div>
 
-      <div id="mobile-controls" class="mobile-controls glass">
-        <button data-control="forward">▲</button>
-        <div class="mobile-row">
-          <button data-control="left">◀</button>
-          <button data-control="backward">▼</button>
-          <button data-control="right">▶</button>
-        </div>
-        <div class="mobile-row">
-          <button data-control="turn-left">↺</button>
-          <button data-control="turn-right">↻</button>
+      <div id="mobile-controls" class="mobile-controls">
+        <div class="mobile-action-cluster glass" aria-label="快捷操作">
+          <button type="button" data-mobile-action="zoom-out" data-i18n-text="mobile.zoomOut">缩小</button>
+          <button type="button" data-mobile-action="zoom-in" data-i18n-text="mobile.zoomIn">放大</button>
         </div>
       </div>
 
       <section id="modal" class="modal hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-panel glass">
-          <button id="close-modal" class="close-button" aria-label="关闭">×</button>
+          <button
+            id="close-modal"
+            class="close-button"
+            aria-label="关闭"
+            data-i18n-aria-label="common.close"
+          >
+            ×
+          </button>
           <div id="modal-content"></div>
         </div>
       </section>

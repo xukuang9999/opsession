@@ -1,0 +1,114 @@
+{
+  "departments": [
+    {
+      "id": "marketing",
+      "left": 148,
+      "top": 54,
+      "width": 136,
+      "height": 92,
+      "doorWidth": 42,
+      "approachSide": "down"
+    },
+    {
+      "id": "sales",
+      "left": 296,
+      "top": 50,
+      "width": 124,
+      "height": 96,
+      "doorWidth": 38,
+      "approachSide": "down"
+    },
+    {
+      "id": "development",
+      "left": 432,
+      "top": 36,
+      "width": 158,
+      "height": 110,
+      "doorWidth": 49,
+      "approachSide": "down"
+    },
+    {
+      "id": "support",
+      "left": 602,
+      "top": 50,
+      "width": 131,
+      "height": 96,
+      "doorWidth": 41,
+      "approachSide": "down"
+    },
+    {
+      "id": "management",
+      "left": 745,
+      "top": 24,
+      "width": 181,
+      "height": 122,
+      "doorWidth": 56,
+      "approachSide": "down"
+    },
+    {
+      "id": "production",
+      "left": 28,
+      "top": 398,
+      "width": 141,
+      "height": 117,
+      "doorWidth": 44,
+      "approachSide": "up"
+    },
+    {
+      "id": "quality",
+      "left": 184,
+      "top": 398,
+      "width": 111,
+      "height": 96,
+      "doorWidth": 34,
+      "approachSide": "up"
+    },
+    {
+      "id": "warehouse",
+      "left": 310,
+      "top": 398,
+      "width": 166,
+      "height": 124,
+      "doorWidth": 51,
+      "approachSide": "up"
+    },
+    {
+      "id": "hr",
+      "left": 491,
+      "top": 398,
+      "width": 118,
+      "height": 96,
+      "doorWidth": 37,
+      "approachSide": "up"
+    },
+    {
+      "id": "finance",
+      "left": 624,
+      "top": 398,
+      "width": 118,
+      "height": 96,
+      "doorWidth": 37,
+      "approachSide": "up"
+    }
+  ],
+  "sharedZones": [
+    {
+      "id": "reception",
+      "left": 24,
+      "top": 46,
+      "width": 114,
+      "height": 100,
+      "doorWidth": 40,
+      "approachSide": "down"
+    },
+    {
+      "id": "cafeteria",
+      "left": 748,
+      "top": 380,
+      "width": 178,
+      "height": 146,
+      "doorWidth": 54,
+      "approachSide": "up"
+    }
+  ]
+}

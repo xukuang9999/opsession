@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "check:rooms": "node scripts/check-room-accessibility.mjs"
+    "check:rooms": "node scripts/check-room-accessibility.mjs",
+    "check:layout": "node scripts/check-layout-regression.mjs",
+    "optimize:office": "node scripts/optimize-office-layout.mjs --write"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
