@@ -14539,6 +14539,7 @@ window.addEventListener("blur", () => {
   isDragging = false;
   activeCanvasPointerId = null;
   activeCanvasPointerTapEligible = false;
+  hoveredExit = null;
 });
 
 document.addEventListener("visibilitychange", () => {
@@ -14549,6 +14550,7 @@ document.addEventListener("visibilitychange", () => {
     isDragging = false;
     activeCanvasPointerId = null;
     activeCanvasPointerTapEligible = false;
+    hoveredExit = null;
   }
 });
 
@@ -14675,6 +14677,10 @@ mobileControls.querySelectorAll<HTMLButtonElement>("button").forEach((button) =>
 
 startButton.addEventListener("click", () => {
   enterTitleExperience();
+});
+
+thankYouRestartButton.addEventListener("click", () => {
+  closeThankYouScreen();
 });
 
 startLanguageZhButton.addEventListener("click", () => {
