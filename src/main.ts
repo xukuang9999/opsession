@@ -537,11 +537,20 @@ type MeetingPodium = {
   label: string;
 };
 
+type OfficeExitPortal = {
+  id: string;
+  rect: Rect;
+  interactionPoint: Point;
+  focusRect: Rect;
+  accent: string;
+};
+
 type InteractionTarget =
   | { type: "podium"; value: MeetingPodium }
   | { type: "guide"; value: AreaGuide }
   | { type: "terminal"; value: OfficeTerminal }
-  | { type: "insight"; value: InsightNode };
+  | { type: "insight"; value: InsightNode }
+  | { type: "exit"; value: OfficeExitPortal };
 
 type OffscreenIndicatorSide = "left" | "right" | "top" | "bottom";
 
@@ -669,6 +678,7 @@ const LED_SERVICE_DISCOVERY_DISTANCE = 22;
 const GUIDE_INTERACTION_DISTANCE = 14;
 const INSIGHT_DISTANCE = 8;
 const PODIUM_INTERACTION_DISTANCE = 12;
+const EXIT_INTERACTION_DISTANCE = 14;
 const PROMPT_TARGET_ARROW_DISTANCE = 20;
 const PLAYER_RADIUS = 1.4;
 const ROOM_FRAME_BORDER_THICKNESS = 2;
@@ -818,6 +828,9 @@ const startLanguageLabel = requireElement<HTMLElement>("#start-language-label");
 const startLanguageZhButton = requireElement<HTMLButtonElement>("#start-language-zh");
 const startLanguageEnButton = requireElement<HTMLButtonElement>("#start-language-en");
 const startLobster = requireElement<HTMLDivElement>("#start-lobster");
+const thankYouScreen = requireElement<HTMLElement>("#thank-you-screen");
+const thankYouContactList = requireElement<HTMLDivElement>("#thanks-contact-list");
+const thankYouRestartButton = requireElement<HTMLButtonElement>("#thanks-restart-button");
 const thesisList = requireElement<HTMLUListElement>("#thesis-list");
 const departmentList = requireElement<HTMLDivElement>("#department-list");
 const sourceList = requireElement<HTMLDivElement>("#source-list");
@@ -1216,6 +1229,54 @@ function getSharedZoneUiLabel(zone: SharedZone): string {
     return zone.label;
   }
   return zone.kind === "reception" ? "Reception" : "Cafeteria";
+}
+
+function getOfficeExitLabel(): string {
+  return pickUiText("左侧出口", "West Exit");
+}
+
+function getOfficeExitBubbleLines(): string[] {
+  return [
+    getOfficeExitLabel(),
+    pickUiText("结束导览并显示感谢页", "Finish the walkthrough"),
+    isTapInteractionMode() ? pickUiText("点击结束演示", "Tap to finish") : pickUiText("按 E 结束演示", "Press E to finish"),
+  ];
+}
+
+function renderThankYouContactList(): void {
+  const presenterCard = `
+    <div class="thanks-screen__contact-item">
+      <div class="thanks-screen__contact-label">${PRESENTER_CONTACT.title[currentUiLanguage]}</div>
+      <span class="thanks-screen__contact-value">${PRESENTER_CONTACT.name}</span>
+    </div>
+  `;
+  const detailCards = PRESENTER_CONTACT.items
+    .map((item) => {
+      const label = item.label[currentUiLanguage];
+      const valueClass = item.placeholder
+        ? "thanks-screen__contact-value is-placeholder"
+        : "thanks-screen__contact-value";
+      const valueMarkup = "href" in item && item.href && !item.placeholder
+        ? `<a class="${valueClass}" href="${item.href}" target="_blank" rel="noreferrer">${item.value}</a>`
+        : `<span class="${valueClass}">${item.value}</span>`;
+      return `
+        <div class="thanks-screen__contact-item">
+          <div class="thanks-screen__contact-label">${label}</div>
+          ${valueMarkup}
+        </div>
+      `;
+    })
+    .join("");
+  thankYouContactList.innerHTML = `${presenterCard}${detailCards}`;
+}
+
+function syncThankYouScreenUi(): void {
+  document.body.classList.toggle("thank-you-screen-active", thankYouScreenState.active);
+  thankYouScreen.setAttribute("aria-hidden", String(!thankYouScreenState.active));
+}
+
+function assertNever(value: never, label: string): never {
+  throw new Error(`${label}: ${String(value)}`);
 }
 
 function cloneSource(source: SourceItem): SourceItem {
@@ -2258,6 +2319,27 @@ const centralMeetingPodium: MeetingPodium = {
     y: centralMeetingPodiumRect.top + centralMeetingPodiumRect.height / 2,
   },
   label: "中央会议区演讲台",
+};
+
+const officeExitPortal: OfficeExitPortal = {
+  id: "office-west-exit",
+  rect: {
+    left: officeRect.left + 2,
+    top: corridorCenterY - 30,
+    width: 14,
+    height: 60,
+  },
+  interactionPoint: {
+    x: corridorRect.left + 16,
+    y: corridorCenterY,
+  },
+  focusRect: {
+    left: officeRect.left,
+    top: corridorCenterY - 44,
+    width: 72,
+    height: 88,
+  },
+  accent: "#f4cf7d",
 };
 
 const officeProps: OfficeProp[] = [
@@ -3422,6 +3504,7 @@ let hoveredGuide: AreaGuide | null = null;
 let hoveredTerminal: OfficeTerminal | null = null;
 let hoveredInsight: InsightNode | null = null;
 let hoveredPodium: MeetingPodium | null = null;
+let hoveredExit: OfficeExitPortal | null = null;
 let modalDepartment: SceneDepartment | null = null;
 let modalSharedZone: SharedZone | null = null;
 let uiMinimal = true;
@@ -3441,6 +3524,9 @@ let lastPromptKey = "";
 let lastRouteListRenderKey = "";
 let lastHudStatusKey = "";
 let officeFlowClock = 0;
+const thankYouScreenState = {
+  active: false,
+};
 const titleScreenState: {
   active: boolean;
   phase: TitleScreenPhase;
@@ -4275,6 +4361,11 @@ function activateInteractionTarget(target: InteractionTarget): void {
     return;
   }
 
+  if (target.type === "exit") {
+    openThankYouScreen();
+    return;
+  }
+
   collectInsight(target.value);
 }
 
@@ -4288,6 +4379,15 @@ function findInteractionTargetAtCanvasPoint(point: Point): InteractionTarget | n
       type: "podium",
       value: centralMeetingPodium,
       hitRect: expandRect(surfaceRectToCanvas(podiumScreenRect, transform), 18),
+    });
+  }
+
+  const exitScreenRect = rectToScreen(officeExitPortal.rect);
+  if (isScreenRectVisible(exitScreenRect)) {
+    candidates.push({
+      type: "exit",
+      value: officeExitPortal,
+      hitRect: expandRect(surfaceRectToCanvas(exitScreenRect, transform), 18),
     });
   }
 
@@ -4407,6 +4507,7 @@ const handledCodes = new Set([
 
 const GUIDE_PRIORITY_MARGIN = 8;
 const INSIGHT_PRIORITY_MARGIN = 4;
+const EXIT_PRIORITY_MARGIN = 6;
 
 function isHandledKeyboardCode(code: string): boolean {
   return handledCodes.has(code);
@@ -4507,12 +4608,19 @@ function findMeetingPodium(): MeetingPodium | null {
     : null;
 }
 
+function findOfficeExit(): OfficeExitPortal | null {
+  return distanceSquared(player, officeExitPortal.interactionPoint) <=
+      EXIT_INTERACTION_DISTANCE * EXIT_INTERACTION_DISTANCE
+    ? officeExitPortal
+    : null;
+}
+
 function getPromptTarget(): InteractionTarget | null {
   if (hoveredPodium) {
     return { type: "podium", value: hoveredPodium };
   }
 
-  if (!hoveredGuide && !hoveredTerminal && !hoveredInsight) {
+  if (!hoveredGuide && !hoveredTerminal && !hoveredInsight && !hoveredExit) {
     return null;
   }
 
@@ -4525,23 +4633,41 @@ function getPromptTarget(): InteractionTarget | null {
   const insightDistance = hoveredInsight
     ? distanceSquared(player, hoveredInsight.position)
     : Number.POSITIVE_INFINITY;
+  const exitDistance = hoveredExit
+    ? distanceSquared(player, hoveredExit.interactionPoint)
+    : Number.POSITIVE_INFINITY;
 
   if (
     hoveredGuide &&
     guideDistance <= terminalDistance + GUIDE_PRIORITY_MARGIN &&
-    guideDistance <= insightDistance + INSIGHT_PRIORITY_MARGIN
+    guideDistance <= insightDistance + INSIGHT_PRIORITY_MARGIN &&
+    guideDistance <= exitDistance + EXIT_PRIORITY_MARGIN
   ) {
     return hoveredGuide ? { type: "guide", value: hoveredGuide } : null;
   }
 
-  if (hoveredInsight && insightDistance + INSIGHT_PRIORITY_MARGIN < terminalDistance) {
+  if (
+    hoveredInsight &&
+    insightDistance + INSIGHT_PRIORITY_MARGIN < terminalDistance &&
+    insightDistance <= exitDistance + EXIT_PRIORITY_MARGIN
+  ) {
     return hoveredInsight ? { type: "insight", value: hoveredInsight } : null;
+  }
+
+  if (
+    hoveredExit &&
+    exitDistance + EXIT_PRIORITY_MARGIN < terminalDistance &&
+    exitDistance < insightDistance + EXIT_PRIORITY_MARGIN
+  ) {
+    return { type: "exit", value: hoveredExit };
   }
 
   return hoveredTerminal
     ? { type: "terminal", value: hoveredTerminal }
     : hoveredInsight
       ? { type: "insight", value: hoveredInsight }
+      : hoveredExit
+        ? { type: "exit", value: hoveredExit }
       : null;
 }
 
@@ -4567,7 +4693,11 @@ function getInteractionTargetDepartment(target: InteractionTarget | null): Scene
       return target.value.department;
     case "insight":
       return target.value.department;
+    case "exit":
+      return null;
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getScenarioInteractionTarget(
@@ -4704,7 +4834,11 @@ function getInteractionTargetAreaKey(target: InteractionTarget): string {
       return `department:${target.value.department.id}`;
     case "insight":
       return `department:${target.value.department.id}`;
+    case "exit":
+      return "exit:west";
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getInteractionTargetId(target: InteractionTarget): string {
@@ -4717,7 +4851,11 @@ function getInteractionTargetId(target: InteractionTarget): string {
       return `terminal:${target.value.id}`;
     case "insight":
       return `insight:${target.value.id}`;
+    case "exit":
+      return `exit:${target.value.id}`;
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getInteractionTargetPosition(target: InteractionTarget): Point {
@@ -4730,7 +4868,11 @@ function getInteractionTargetPosition(target: InteractionTarget): Point {
       return target.value.position;
     case "insight":
       return target.value.position;
+    case "exit":
+      return target.value.interactionPoint;
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getInteractionTargetDistance(target: InteractionTarget): number {
@@ -4755,6 +4897,8 @@ function getInteractionTargetIndicatorTitle(target: InteractionTarget): string {
       }
       case "insight":
         return collectedInsights.has(target.value.id) ? "Captured Insight" : "Insight Chip";
+      case "exit":
+        return "West Exit";
     }
   }
 
@@ -4771,7 +4915,11 @@ function getInteractionTargetIndicatorTitle(target: InteractionTarget): string {
       return target.value.scenario.title;
     case "insight":
       return collectedInsights.has(target.value.id) ? "已记录芯片" : "记忆芯片";
+    case "exit":
+      return "左侧出口";
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getInteractionTargetIndicatorAccent(target: InteractionTarget): string {
@@ -4787,7 +4935,11 @@ function getInteractionTargetIndicatorAccent(target: InteractionTarget): string 
       return completedScenarios.has(target.value.scenario.id) ? "#8be08c" : target.value.department.accent;
     case "insight":
       return collectedInsights.has(target.value.id) ? "#8be08c" : "#ffde7a";
+    case "exit":
+      return target.value.accent;
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getInteractionTargetDiscoveryDistance(target: InteractionTarget): number {
@@ -4802,7 +4954,11 @@ function getInteractionTargetDiscoveryDistance(target: InteractionTarget): numbe
         : INTERACTION_DISTANCE * 2.8;
     case "insight":
       return INSIGHT_DISTANCE * 3.2;
+    case "exit":
+      return EXIT_INTERACTION_DISTANCE * 2.8;
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getInteractionTargetIndicatorPriority(target: InteractionTarget, highlighted: boolean): number {
@@ -4830,6 +4986,9 @@ function getInteractionTargetIndicatorPriority(target: InteractionTarget, highli
       break;
     case "insight":
       priority += collectedInsights.has(target.value.id) ? 1 : 2;
+      break;
+    case "exit":
+      priority += 1.8;
       break;
   }
 
@@ -4867,6 +5026,7 @@ function collectOffscreenInteractionIndicators(transform: SurfaceDrawTransform):
   areaGuides.forEach((guide) => candidates.push({ type: "guide", value: guide }));
   terminals.forEach((terminal) => candidates.push({ type: "terminal", value: terminal }));
   insightNodes.forEach((node) => candidates.push({ type: "insight", value: node }));
+  candidates.push({ type: "exit", value: officeExitPortal });
 
   const seen = new Set<string>();
   const indicators: OffscreenInteractionIndicator[] = [];
@@ -4938,7 +5098,11 @@ function shouldRenderMinimapInteractionMarker(target: InteractionTarget, highlig
       return target.value.kind === "external" || !completedScenarios.has(target.value.scenario.id);
     case "insight":
       return !collectedInsights.has(target.value.id);
+    case "exit":
+      return true;
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getInteractionTargetMinimapPriority(target: InteractionTarget, highlighted: boolean): number {
@@ -4965,6 +5129,9 @@ function getInteractionTargetMinimapPriority(target: InteractionTarget, highligh
         priority += 1;
       }
       break;
+    case "exit":
+      priority += 0.9;
+      break;
   }
 
   return priority;
@@ -4987,6 +5154,7 @@ function collectMinimapInteractionMarkers(): MinimapInteractionMarker[] {
   areaGuides.forEach((guide) => candidates.push({ type: "guide", value: guide }));
   terminals.forEach((terminal) => candidates.push({ type: "terminal", value: terminal }));
   insightNodes.forEach((node) => candidates.push({ type: "insight", value: node }));
+  candidates.push({ type: "exit", value: officeExitPortal });
 
   const seen = new Set<string>();
   const markers: MinimapInteractionMarker[] = [];
@@ -5070,6 +5238,9 @@ function collectGroundInteractionMarkers(): GroundInteractionMarker[] {
   if (hoveredInsight) {
     pushMarker({ type: "insight", value: hoveredInsight }, false);
   }
+  if (hoveredExit) {
+    pushMarker({ type: "exit", value: hoveredExit }, false);
+  }
 
   const ledServiceTarget = getLedServiceBubbleTarget();
   if (ledServiceTarget) {
@@ -5094,7 +5265,11 @@ function getPromptTargetDepartment(): SceneDepartment | null {
       return target.value.department;
     case "insight":
       return target.value.department;
+    case "exit":
+      return null;
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getPromptTargetSharedZone(): SharedZone | null {
@@ -5132,7 +5307,11 @@ function getNavigationFocusRect(target: InteractionTarget | null): Rect | null {
       return target.value.department.roomRect;
     case "insight":
       return target.value.department.roomRect;
+    case "exit":
+      return target.value.focusRect;
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getNavigationFocusCenter(target: InteractionTarget | null): Point | null {
@@ -5210,6 +5389,10 @@ function getAreaRectByKey(areaKey: string): Rect | null {
 
   if (areaKey === "office:central") {
     return corridorRect;
+  }
+
+  if (areaKey === "exit:west") {
+    return officeExitPortal.focusRect;
   }
 
   if (areaKey.startsWith("department:")) {
@@ -5596,6 +5779,8 @@ function getPromptTargetChipLabel(target: InteractionTarget): string {
         return target.value.kind === "external" ? "Gate" : "Scene";
       case "insight":
         return "Insight";
+      case "exit":
+        return "End";
     }
   }
 
@@ -5608,7 +5793,11 @@ function getPromptTargetChipLabel(target: InteractionTarget): string {
       return target.value.kind === "external" ? "终端" : "场景";
     case "insight":
       return "洞察";
+    case "exit":
+      return "结束";
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getInteractionTargetAreaLabel(target: InteractionTarget): string {
@@ -5626,6 +5815,8 @@ function getInteractionTargetAreaLabel(target: InteractionTarget): string {
           : `${getDepartmentUiLabel(target.value.department)} Terminal`;
       case "insight":
         return `${getDepartmentUiLabel(target.value.department)} Insight`;
+      case "exit":
+        return "Office Exit";
     }
   }
 
@@ -5642,7 +5833,11 @@ function getInteractionTargetAreaLabel(target: InteractionTarget): string {
         : `${getDepartmentUiLabel(target.value.department)} 终端`;
     case "insight":
       return `${getDepartmentUiLabel(target.value.department)} 洞察`;
+    case "exit":
+      return "办公室左侧";
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getInteractionTargetStatusLabel(target: InteractionTarget): string {
@@ -5659,6 +5854,8 @@ function getInteractionTargetStatusLabel(target: InteractionTarget): string {
         return completedScenarios.has(target.value.scenario.id) ? "Completed" : "Ready";
       case "insight":
         return collectedInsights.has(target.value.id) ? "Captured" : "Available";
+      case "exit":
+        return "Leave App";
     }
   }
 
@@ -5674,7 +5871,11 @@ function getInteractionTargetStatusLabel(target: InteractionTarget): string {
       return completedScenarios.has(target.value.scenario.id) ? "已执行" : "可执行";
     case "insight":
       return collectedInsights.has(target.value.id) ? "已记录" : "可记录";
+    case "exit":
+      return "离开应用";
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function getInteractionTargetActionLabel(target: InteractionTarget): string {
@@ -5697,6 +5898,8 @@ function getInteractionTargetActionLabel(target: InteractionTarget): string {
         return collectedInsights.has(target.value.id)
           ? (isTapInteractionMode() ? "Tap to review insight" : "Press F to review insight")
           : (isTapInteractionMode() ? "Tap to save insight" : "Press F to save insight");
+      case "exit":
+        return isTapInteractionMode() ? "Tap to finish" : "Press E to finish";
     }
   }
 
@@ -5718,7 +5921,11 @@ function getInteractionTargetActionLabel(target: InteractionTarget): string {
       return collectedInsights.has(target.value.id)
         ? (isTapInteractionMode() ? "点击复看洞察" : "按 F 复看洞察")
         : (isTapInteractionMode() ? "点击保存洞察" : "按 F 保存洞察");
+    case "exit":
+      return isTapInteractionMode() ? "点击结束演示" : "按 E 结束演示";
   }
+
+  return assertNever(target, "Unknown interaction target");
 }
 
 function isNpcInsideDepartment(npc: NpcActor, department: SceneDepartment): boolean {
@@ -6341,6 +6548,13 @@ function updateMapHint(): void {
         );
     return;
   }
+  if (target.type === "exit") {
+    mapHint.textContent = pickUiText(
+      `${strategicPrefix}${arrivedAtTarget ? "你已到达左侧出口，" : ""}靠近出口后可结束导览，并显示感谢参与与联系方式页面。`,
+      `${strategicPrefix}${arrivedAtTarget ? "You have reached the west exit. " : ""}Move close to the exit to finish the walkthrough and show the thank-you screen with contact details.`
+    );
+    return;
+  }
   mapHint.textContent = pickUiText(
     `${strategicPrefix}${arrivedAtTarget ? "你已进入目标部门，" : ""}导航箭头和房间聚焦会引导你靠近记忆芯片，靠近后可记录或复看洞察${followUpTarget ? `，然后去 ${getNavigationTargetShortLabel(followUpTarget, 6)}` : ""}${strategicDepartment ? `，当前闭环冲刺 ${strategicDepartment.shortName}：${getDepartmentPendingWorkSummary(strategicDepartment)}` : ""}。`,
     `${strategicPrefix}${arrivedAtTarget ? "You are inside the target department. " : ""}The navigation arrow and room focus guide you to the insight chip. Move close to save or review the insight.${followUpTarget ? ` Then head to ${getNavigationTargetShortLabel(followUpTarget, 6)}.` : ""}${strategicDepartment ? ` Sprint status for ${strategicDepartment.shortName}: ${getDepartmentPendingWorkSummary(strategicDepartment)}.` : ""}`
@@ -6472,7 +6686,21 @@ function updatePrompt(): void {
         <div class="prompt-action">${action}</div>
       `;
     }
-  } else {
+  } else if (target.type === "exit") {
+    const detail = pickUiText("状态：离开应用后显示感谢参与与联系方式", "Status: finish and show the thank-you screen");
+    const action = isTapInteractionMode() ? "点击结束演示" : "按 E 结束演示";
+    promptKey = `exit:${target.value.id}:${distanceLabel}`;
+    promptMarkup = `
+      <div class="prompt-head">
+        <span class="prompt-chip">${getPromptTargetChipLabel(target)}</span>
+        <strong>${getOfficeExitLabel()}</strong>
+        <span class="prompt-distance">${distanceLabel}</span>
+      </div>
+      ${metaMarkup}
+      <div class="prompt-detail">${detail}</div>
+      <div class="prompt-action">${action}</div>
+    `;
+  } else if (target.type === "insight") {
     const done = collectedInsights.has(target.value.id);
     const detail = done
       ? pickUiText("状态：已记录", "Status: Captured")
@@ -6491,6 +6719,8 @@ function updatePrompt(): void {
       <div class="prompt-detail">${detail}</div>
       <div class="prompt-action">${action}</div>
     `;
+  } else {
+    return assertNever(target, "Unknown prompt target");
   }
 
   if (promptKey !== lastPromptKey) {
@@ -6564,6 +6794,8 @@ function applyUiLanguage(): void {
   currentZoneElement.style.textShadow = "";
   syncUiVisibility();
   updateClockPanel();
+  renderThankYouContactList();
+  syncThankYouScreenUi();
   renderSourceList();
   renderDepartmentList();
   updateStats();
@@ -7155,6 +7387,20 @@ function closeModal(): void {
   modal.classList.add("hidden");
   modalDepartment = null;
   modalSharedZone = null;
+}
+
+function openThankYouScreen(): void {
+  clearMobileMoveTarget();
+  closeModal();
+  thankYouScreenState.active = true;
+  syncThankYouScreenUi();
+  setLastEvent(pickUiText("从左侧出口离开办公室", "Left the office through the west exit"));
+}
+
+function closeThankYouScreen(): void {
+  thankYouScreenState.active = false;
+  syncThankYouScreenUi();
+  setLastEvent(pickUiText("返回办公室继续漫游", "Returned to the office walkthrough"));
 }
 
 function showToast(message: string): void {
@@ -8136,6 +8382,10 @@ function isTitleScreenActive(): boolean {
   return titleScreenState.active;
 }
 
+function isThankYouScreenActive(): boolean {
+  return thankYouScreenState.active;
+}
+
 function syncTitleScreenUi(): void {
   const isLanguagePhase = titleScreenState.phase === "language";
   document.body.classList.toggle("title-screen-active", titleScreenState.active);
@@ -8183,6 +8433,7 @@ function selectTitleScreenLanguage(language: UiLanguage): void {
 function enterTitleExperience(): void {
   titleScreenState.active = false;
   titleScreenState.phase = "intro";
+  thankYouScreenState.active = false;
   keys.clear();
   touchControls.clear();
   clearMobileMoveTarget();
@@ -8190,8 +8441,10 @@ function enterTitleExperience(): void {
   hoveredTerminal = null;
   hoveredInsight = null;
   hoveredPodium = null;
+  hoveredExit = null;
   applyUiLanguage();
   syncTitleScreenUi();
+  syncThankYouScreenUi();
   lastFrameTime = performance.now();
 }
 
@@ -10693,6 +10946,52 @@ function drawAreaGuide(guide: AreaGuide, elapsed: number): void {
   drawLobsterGuideSprite(anchor, elapsed, highlighted, { facing: guide.facing });
 }
 
+function drawOfficeExitPortal(elapsed: number): void {
+  const rect = rectToScreen(officeExitPortal.rect);
+  const focus = hoveredExit?.id === officeExitPortal.id;
+  const visibilityRect = {
+    left: rect.left - 20,
+    top: rect.top - 24,
+    width: rect.width + 40,
+    height: rect.height + 48,
+  };
+
+  if (!isScreenRectVisible(visibilityRect)) {
+    return;
+  }
+
+  const anchor = worldToScreen(officeExitPortal.interactionPoint.x, officeExitPortal.interactionPoint.y);
+  drawInteractionBeacon(anchor, elapsed, officeExitPortal.accent, focus, {
+    width: 22,
+    height: 10,
+    offsetY: -10,
+    beamHeight: 18,
+    seed: officeExitPortal.rect.top * 0.02,
+  });
+
+  drawPixelFrame(
+    surfaceContext,
+    rect,
+    focus ? "#58462e" : "#403325",
+    focus ? "#fff2c4" : "#d0a95d",
+    "#090b12",
+    2
+  );
+  surfaceContext.fillStyle = focus ? withAlpha(officeExitPortal.accent, 0.32) : withAlpha(officeExitPortal.accent, 0.18);
+  surfaceContext.fillRect(rect.left + 2, rect.top + 2, rect.width - 4, rect.height - 4);
+  surfaceContext.fillStyle = "#fff2c4";
+  surfaceContext.fillRect(rect.left + 3, rect.top + 8, rect.width - 6, 3);
+  surfaceContext.fillRect(rect.left + 3, rect.top + rect.height - 12, rect.width - 6, 3);
+  surfaceContext.fillStyle = "#5f4527";
+  surfaceContext.fillRect(rect.left + Math.round(rect.width / 2) - 1, rect.top + 14, 2, rect.height - 28);
+  surfaceContext.fillStyle = "#f7fbff";
+  surfaceContext.fillRect(rect.left + rect.width - 4, rect.top + Math.round(rect.height / 2), 2, 2);
+  surfaceContext.font = 'bold 5px Monaco, "Courier New", monospace';
+  surfaceContext.textAlign = "center";
+  surfaceContext.textBaseline = "middle";
+  surfaceContext.fillText("EXIT", rect.left + rect.width / 2, rect.top - 6);
+}
+
 function drawSharedZone(zone: SharedZone, elapsed: number): void {
   const room = rectToScreen(zone.roomRect);
   const walkway = rectToScreen(zone.walkwayRect);
@@ -11609,6 +11908,29 @@ function drawSceneLabelOverlays(transform: SurfaceDrawTransform, reservedRects: 
     );
   }
 
+  const exitAnchor = worldToScreen(officeExitPortal.interactionPoint.x, officeExitPortal.interactionPoint.y);
+  if (
+    isScreenRectVisible({
+      left: exitAnchor.x - 42,
+      top: exitAnchor.y - 56,
+      width: 84,
+      height: 70,
+    })
+  ) {
+    drawHdSceneTag(
+      exitAnchor,
+      transform,
+      getOfficeExitLabel(),
+      hoveredExit ? adjustHex(officeExitPortal.accent, 10) : officeExitPortal.accent,
+      {
+        subtitle: pickUiText("结束导览", "Finish Walkthrough"),
+        offsetY: -22,
+        compact: true,
+        reservedRects,
+      }
+    );
+  }
+
   npcs
     .filter((npc) => {
       const anchor = worldToScreen(npc.x, npc.y);
@@ -11809,6 +12131,32 @@ function drawAreaGuideBubbleOverlays(transform: SurfaceDrawTransform, reservedRe
     getAreaGuideBubbleLines(hoveredGuide),
     transform,
     hoveredGuide.accent,
+    reservedRects
+  );
+}
+
+function drawExitBubbleOverlay(transform: SurfaceDrawTransform, reservedRects: Rect[]): void {
+  if (!hoveredExit || !modal.classList.contains("hidden")) {
+    return;
+  }
+
+  const anchor = worldToScreen(hoveredExit.interactionPoint.x, hoveredExit.interactionPoint.y);
+  if (
+    !isScreenRectVisible({
+      left: anchor.x - 72,
+      top: anchor.y - 76,
+      width: 144,
+      height: 92,
+    })
+  ) {
+    return;
+  }
+
+  drawFloatingInfoBubble(
+    { x: anchor.x + 8, y: anchor.y - 10 },
+    getOfficeExitBubbleLines(),
+    transform,
+    hoveredExit.accent,
     reservedRects
   );
 }
@@ -12394,8 +12742,14 @@ function drawGroundInteractionHighlights(elapsed: number): void {
             ? marker.target.value.kind === "external" && isLedServiceTerminal(marker.target.value)
               ? 20
               : 18
-            : 16;
-      const offsetY = marker.target.type === "guide" ? 10 : 8;
+            : marker.target.type === "exit"
+              ? 20
+              : 16;
+      const offsetY = marker.target.type === "guide"
+        ? 10
+        : marker.target.type === "exit"
+          ? -2
+          : 8;
       const visibilityRect = {
         left: anchor.x - width,
         top: anchor.y - 6,
@@ -12925,6 +13279,7 @@ function renderScene(elapsed: number): void {
   drawMeetingTurnTimeline(elapsed);
   drawMeetingDirectorRail(elapsed);
   drawMeetingSpeakerWheel(elapsed);
+  drawOfficeExitPortal(elapsed);
   sharedZones.forEach((zone) => drawSharedZone(zone, elapsed));
   officeProps.forEach((prop, index) => drawOfficeProp(prop, elapsed, index));
   departments.forEach((department) => drawDepartment(department, elapsed));
@@ -12964,6 +13319,7 @@ function renderScene(elapsed: number): void {
   sceneContext.drawImage(surface, transform.drawLeft, transform.drawTop, drawWidth, drawHeight);
   drawHdCorridorHeadings(transform);
   drawHdCommandBoard(transform);
+  drawExitBubbleOverlay(transform, overlayRects);
   drawAreaGuideBubbleOverlays(transform, overlayRects);
   drawTerminalBubbleOverlays(transform, overlayRects);
   drawNpcBubbleOverlays(transform, overlayRects);
@@ -13604,6 +13960,8 @@ function renderMinimap(elapsed: number): void {
         ? { x: 3, y: -2 }
         : marker.target.type === "insight"
           ? { x: 0, y: 4 }
+          : marker.target.type === "exit"
+            ? { x: -4, y: 0 }
           : { x: 0, y: 0 };
     const x = basePoint.x + offset.x;
     const y = basePoint.y + offset.y;
@@ -13653,6 +14011,13 @@ function renderMinimap(elapsed: number): void {
         minimapContext.rotate(Math.PI / 4);
         minimapContext.fillRect(-3, -3, 6, 6);
         minimapContext.strokeRect(-3.5, -3.5, 7, 7);
+        break;
+      case "exit":
+        minimapContext.fillRect(-4, -4, 8, 8);
+        minimapContext.strokeRect(-4.5, -4.5, 9, 9);
+        minimapContext.fillStyle = marker.highlighted ? "#f7fbff" : withAlpha("#f7fbff", 0.8);
+        minimapContext.fillRect(-1, -3, 2, 6);
+        minimapContext.fillRect(-3, -1, 4, 2);
         break;
     }
 
@@ -13977,6 +14342,7 @@ function updateWorld(delta: number): void {
   hoveredGuide = findNearestGuide();
   hoveredTerminal = findNearestTerminal();
   hoveredInsight = findNearestInsight();
+  hoveredExit = findOfficeExit();
   const navigationTarget = getNavigationTarget();
   const focusSummary = getNavigationFocusSummary(navigationTarget);
   syncAreaTransitionState(
@@ -14066,6 +14432,12 @@ function animate(now: number): void {
     return;
   }
 
+  if (isThankYouScreenActive()) {
+    renderScene(elapsed);
+    window.requestAnimationFrame(animate);
+    return;
+  }
+
   updateWorld(delta);
   renderScene(elapsed);
   renderMinimap(elapsed);
@@ -14074,6 +14446,8 @@ function animate(now: number): void {
 
 function initializeUi(): void {
   syncUiVisibility();
+  syncThankYouScreenUi();
+  renderThankYouContactList();
   currentZoneElement.textContent = getDefaultZoneLabel();
   officeTrafficElement.textContent = getWaitingTrafficLabel();
   focusRoomElement.textContent = getFocusRoomFallbackLabel();
@@ -14094,6 +14468,14 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
+  if (isThankYouScreenActive()) {
+    if (event.code === "Escape") {
+      event.preventDefault();
+      closeThankYouScreen();
+    }
+    return;
+  }
+
   if (shouldIgnoreKeyboardEvent(event)) {
     return;
   }
@@ -14109,6 +14491,8 @@ window.addEventListener("keydown", (event) => {
       openAreaGuideModal(hoveredGuide);
     } else if (!event.repeat && hoveredTerminal && modal.classList.contains("hidden")) {
       openTerminal(hoveredTerminal);
+    } else if (!event.repeat && hoveredExit && modal.classList.contains("hidden")) {
+      openThankYouScreen();
     }
     return;
   }
@@ -14130,6 +14514,10 @@ window.addEventListener("keydown", (event) => {
 
 window.addEventListener("keyup", (event) => {
   if (isTitleScreenActive()) {
+    return;
+  }
+
+  if (isThankYouScreenActive()) {
     return;
   }
 
